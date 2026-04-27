@@ -116,6 +116,7 @@ private fun SessionCard(session: Session, onClick: () -> Unit) {
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NewSessionDialog(
     departments: List<Department>,
