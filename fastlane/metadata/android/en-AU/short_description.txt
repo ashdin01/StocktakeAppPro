@@ -1,0 +1,1 @@
+Scan EAN barcodes for stock counts, synced to BackOfficePro.

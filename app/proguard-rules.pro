@@ -1,0 +1,5 @@
+-keep class au.com.harcourtapples.stocktake.api.models.** { *; }
+-keepattributes Signature
+-keepattributes *Annotation*
+-dontwarn okhttp3.**
+-dontwarn retrofit2.**

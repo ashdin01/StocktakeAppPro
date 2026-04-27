@@ -1,0 +1,188 @@
+package au.com.harcourtapples.stocktake.ui.sessions
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import au.com.harcourtapples.stocktake.api.models.Department
+import au.com.harcourtapples.stocktake.api.models.Session
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SessionsScreen(
+    serverUrl: String,
+    onOpenSession: (Int) -> Unit,
+    onSettings: () -> Unit,
+    vm: SessionsViewModel = viewModel()
+) {
+    val state by vm.state.collectAsState()
+    var showNewDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(serverUrl) { vm.load(serverUrl) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Stocktake Sessions") },
+                actions = {
+                    IconButton(onClick = onSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showNewDialog = true }) {
+                Icon(Icons.Default.Add, contentDescription = "New Session")
+            }
+        }
+    ) { padding ->
+        Box(Modifier.padding(padding).fillMaxSize()) {
+            when {
+                state.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                state.error != null -> ErrorMessage(
+                    message = state.error!!,
+                    onRetry = { vm.load(serverUrl) }
+                )
+                state.sessions.isEmpty() -> Text(
+                    "No sessions yet. Tap + to create one.",
+                    modifier = Modifier.align(Alignment.Center).padding(16.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                else -> LazyColumn(Modifier.fillMaxSize()) {
+                    items(state.sessions, key = { it.id }) { session ->
+                        SessionCard(session = session, onClick = { onOpenSession(session.id) })
+                        HorizontalDivider()
+                    }
+                }
+            }
+        }
+    }
+
+    if (showNewDialog) {
+        NewSessionDialog(
+            departments = state.departments,
+            onDismiss = { showNewDialog = false },
+            onCreate = { label, deptId ->
+                showNewDialog = false
+                vm.createSession(serverUrl, label, deptId, onSuccess = onOpenSession)
+            }
+        )
+    }
+
+    state.error?.let { err ->
+        LaunchedEffect(err) {
+            // error shown inline; auto-dismiss after showing
+        }
+    }
+}
+
+@Composable
+private fun SessionCard(session: Session, onClick: () -> Unit) {
+    ListItem(
+        modifier = Modifier.clickable(onClick = onClick),
+        headlineContent = { Text(session.label, fontWeight = FontWeight.SemiBold) },
+        supportingContent = {
+            Column {
+                session.deptName?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                Text(
+                    "${session.lineCount} items  •  ${session.startedAt.take(10)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        trailingContent = {
+            Badge(
+                containerColor = if (session.status == "OPEN")
+                    MaterialTheme.colorScheme.primaryContainer
+                else
+                    MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Text(session.status)
+            }
+        }
+    )
+}
+
+@Composable
+private fun NewSessionDialog(
+    departments: List<Department>,
+    onDismiss: () -> Unit,
+    onCreate: (String, Int?) -> Unit
+) {
+    var label by remember { mutableStateOf("") }
+    var selectedDept by remember { mutableStateOf<Department?>(null) }
+    var expanded by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New Stocktake Session") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    label = { Text("Session Label") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                    OutlinedTextField(
+                        value = selectedDept?.name ?: "All Departments",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Department (optional)") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text("All Departments") },
+                            onClick = { selectedDept = null; expanded = false }
+                        )
+                        departments.forEach { dept ->
+                            DropdownMenuItem(
+                                text = { Text(dept.name) },
+                                onClick = { selectedDept = dept; expanded = false }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (label.isNotBlank()) onCreate(label.trim(), selectedDept?.id) },
+                enabled = label.isNotBlank()
+            ) { Text("Create") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun ErrorMessage(message: String, onRetry: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(message, color = MaterialTheme.colorScheme.error)
+        Spacer(Modifier.height(12.dp))
+        Button(onClick = onRetry) { Text("Retry") }
+    }
+}

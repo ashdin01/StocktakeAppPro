@@ -1,0 +1,13 @@
+BackOfficePro Stocktake lets you perform stock counts using your Android phone's camera.
+
+Scan EAN-13 and EAN-8 barcodes. Each scan looks up the product on your BackOfficePro server (running on your local network) and lets you record the counted quantity.
+
+Features:
+- EAN-13 and EAN-8 barcode scanning via phone camera
+- Create and manage stocktake sessions
+- Scan products and record counted quantities
+- Handles barcode aliases (multiple barcodes per product)
+- Connects to BackOfficePro over your store's WiFi
+
+No internet connection required — communicates only with your local BackOfficePro server.
+No proprietary SDKs. No tracking. Open source.
