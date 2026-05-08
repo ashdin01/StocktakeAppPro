@@ -21,53 +21,70 @@ class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.
         )
     }
 
-    private var lastScanTime  = 0L
+    private var lastScanTime   = 0L
     private var pendingBarcode: String? = null
-    private var confirmCount  = 0
+    private var confirmCount   = 0
 
     override fun analyze(image: ImageProxy) {
-        val now = System.currentTimeMillis()
-        if (now - lastScanTime < COOLDOWN_MS) {
-            image.close()
-            return
-        }
-
-        // Use the Y (luminance) plane. Pass rowStride as dataWidth so ZXing
-        // correctly handles row padding (rowStride is often > image.width).
-        val yPlane = image.planes[0]
-        val buffer = yPlane.buffer
-        val data = ByteArray(buffer.remaining()).also { buffer.get(it) }
-        val rowStride = yPlane.rowStride
-
-        val source = PlanarYUVLuminanceSource(
-            data, rowStride, image.height,
-            0, 0, image.width, image.height, false
-        )
-
         try {
-            val result = reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
-            val barcode = result.text
+            val now = System.currentTimeMillis()
+            if (now - lastScanTime < COOLDOWN_MS) return
 
-            if (barcode == pendingBarcode) {
-                confirmCount++
-            } else {
-                pendingBarcode = barcode
-                confirmCount  = 1
-            }
+            val data = extractLuminance(image)
+            val source = PlanarYUVLuminanceSource(
+                data, image.width, image.height,
+                0, 0, image.width, image.height, false
+            )
 
-            if (confirmCount >= CONFIRM_NEEDED) {
-                lastScanTime   = now
-                pendingBarcode = null
-                confirmCount   = 0
-                onDetected(barcode)
+            try {
+                val result = reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
+                val barcode = result.text
+
+                if (barcode == pendingBarcode) {
+                    confirmCount++
+                } else {
+                    pendingBarcode = barcode
+                    confirmCount   = 1
+                }
+
+                if (confirmCount >= CONFIRM_NEEDED) {
+                    lastScanTime   = now
+                    pendingBarcode = null
+                    confirmCount   = 0
+                    onDetected(barcode)
+                }
+            } catch (_: NotFoundException) {
+                // missed frame — keep pendingBarcode so we can accumulate confirmations
+            } finally {
+                reader.reset()
             }
-        } catch (_: NotFoundException) {
-            // Don't reset pendingBarcode — missed frames happen between good reads.
-            // Only a different barcode should reset the confirmation count.
         } finally {
-            reader.reset()
             image.close()
         }
+    }
+
+    private fun extractLuminance(image: ImageProxy): ByteArray {
+        val yPlane    = image.planes[0]
+        val rowStride = yPlane.rowStride
+        val width     = image.width
+        val height    = image.height
+        val buffer    = yPlane.buffer
+
+        // If there's no row padding, copy the buffer directly.
+        if (rowStride == width) {
+            return ByteArray(buffer.remaining()).also { buffer.get(it) }
+        }
+
+        // Otherwise strip the padding from each row to give ZXing a clean packed array.
+        val data = ByteArray(width * height)
+        val row  = ByteArray(rowStride)
+        for (y in 0 until height) {
+            val toCopy = minOf(rowStride, buffer.remaining())
+            if (toCopy <= 0) break
+            buffer.get(row, 0, toCopy)
+            row.copyInto(data, y * width, 0, minOf(width, toCopy))
+        }
+        return data
     }
 
     companion object {
