@@ -22,8 +22,22 @@ class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.
         )
     }
 
+    private var lastScanTime = 0L
+    private var lastScannedBarcode: String? = null
+
+    fun resetCooldown() {
+        lastScanTime = 0L
+        lastScannedBarcode = null
+    }
+
     override fun analyze(image: ImageProxy) {
         if (image.format != ImageFormat.YUV_420_888) {
+            image.close()
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        if (now - lastScanTime < COOLDOWN_MS) {
             image.close()
             return
         }
@@ -38,12 +52,21 @@ class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.
 
         try {
             val result = reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
-            onDetected(result.text)
+            val barcode = result.text
+            if (barcode != lastScannedBarcode) {
+                lastScanTime = now
+                lastScannedBarcode = barcode
+                onDetected(barcode)
+            }
         } catch (_: NotFoundException) {
             // no barcode in this frame
         } finally {
             reader.reset()
             image.close()
         }
+    }
+
+    companion object {
+        private const val COOLDOWN_MS = 1500L
     }
 }

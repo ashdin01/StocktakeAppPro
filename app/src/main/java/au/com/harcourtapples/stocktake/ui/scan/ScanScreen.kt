@@ -18,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -145,39 +147,44 @@ private fun CameraPreview(isAnalyzing: Boolean, onBarcodeDetected: (String) -> U
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
 
+    // Use rememberUpdatedState so the callback and flag are always current
+    // without restarting the camera pipeline on every state change.
+    val currentIsAnalyzing by rememberUpdatedState(isAnalyzing)
+    val currentOnDetected by rememberUpdatedState(onBarcodeDetected)
+
     AndroidView(
         factory = { ctx ->
-            PreviewView(ctx).apply {
+            val previewView = PreviewView(ctx).apply {
                 implementationMode = PreviewView.ImplementationMode.COMPATIBLE
             }
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+            cameraProviderFuture.addListener({
+                val cameraProvider = cameraProviderFuture.get()
+                val preview = Preview.Builder().build().also {
+                    it.surfaceProvider = previewView.surfaceProvider
+                }
+                val analyzer = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                    .also {
+                        it.setAnalyzer(executor, BarcodeAnalyzer { barcode ->
+                            if (currentIsAnalyzing) currentOnDetected(barcode)
+                        })
+                    }
+                try {
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        preview,
+                        analyzer
+                    )
+                } catch (_: Exception) {}
+            }, ContextCompat.getMainExecutor(ctx))
+            previewView
         },
         modifier = Modifier.fillMaxSize()
-    ) { previewView ->
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-            val preview = Preview.Builder().build().also {
-                it.surfaceProvider = previewView.surfaceProvider
-            }
-            val analyzer = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-                .also {
-                    it.setAnalyzer(executor, BarcodeAnalyzer { barcode ->
-                        if (isAnalyzing) onBarcodeDetected(barcode)
-                    })
-                }
-            try {
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    lifecycleOwner,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
-                    preview,
-                    analyzer
-                )
-            } catch (_: Exception) {}
-        }, ContextCompat.getMainExecutor(context))
-    }
+    )
 }
 
 @Composable
