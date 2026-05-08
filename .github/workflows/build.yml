@@ -32,31 +32,14 @@ jobs:
       - name: Build debug APK
         run: gradle :app:assembleDebug
 
-      - name: Upload debug APK
+      - name: Upload debug APK (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: stocktake-debug
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      # Release build — only runs when a GitHub Release is created
-      - name: Build release APK
-        if: github.event_name == 'release'
-        run: gradle :app:assembleRelease
-
-      - name: Sign release APK
-        if: github.event_name == 'release'
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > /tmp/release.keystore
-          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner sign \
-            --ks /tmp/release.keystore \
-            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
-            --ks-pass "pass:${{ secrets.KEYSTORE_PASSWORD }}" \
-            --key-pass "pass:${{ secrets.KEY_PASSWORD }}" \
-            --out app/build/outputs/apk/release/app-release-signed.apk \
-            app/build/outputs/apk/release/app-release-unsigned.apk
-
-      - name: Upload release APK to GitHub Release
+      - name: Attach debug APK to GitHub Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/app-release-signed.apk
+          files: app/build/outputs/apk/debug/app-debug.apk
