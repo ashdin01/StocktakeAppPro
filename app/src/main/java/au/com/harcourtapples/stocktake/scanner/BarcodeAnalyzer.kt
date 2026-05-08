@@ -10,7 +10,10 @@ import com.google.zxing.NotFoundException
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 
-class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.Analyzer {
+class BarcodeAnalyzer(
+    private val onDetected: (String) -> Unit,
+    private val onDebug: ((String) -> Unit)? = null,
+) : ImageAnalysis.Analyzer {
 
     private val reader = MultiFormatReader().apply {
         setHints(
@@ -24,11 +27,17 @@ class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.
     private var lastScanTime   = 0L
     private var pendingBarcode: String? = null
     private var confirmCount   = 0
+    private var frameCount     = 0
+    private var lastRaw        = "—"
 
     override fun analyze(image: ImageProxy) {
         try {
+            frameCount++
             val now = System.currentTimeMillis()
-            if (now - lastScanTime < COOLDOWN_MS) return
+            if (now - lastScanTime < COOLDOWN_MS) {
+                onDebug?.invoke("frames=$frameCount [cooldown] last=$lastRaw")
+                return
+            }
 
             val data = extractLuminance(image)
             val source = PlanarYUVLuminanceSource(
@@ -39,6 +48,7 @@ class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.
             try {
                 val result = reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
                 val barcode = result.text
+                lastRaw = barcode
 
                 if (barcode == pendingBarcode) {
                     confirmCount++
@@ -47,6 +57,8 @@ class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.
                     confirmCount   = 1
                 }
 
+                onDebug?.invoke("frames=$frameCount found=$barcode confirm=$confirmCount/${CONFIRM_NEEDED}")
+
                 if (confirmCount >= CONFIRM_NEEDED) {
                     lastScanTime   = now
                     pendingBarcode = null
@@ -54,7 +66,7 @@ class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.
                     onDetected(barcode)
                 }
             } catch (_: NotFoundException) {
-                // missed frame — keep pendingBarcode so we can accumulate confirmations
+                onDebug?.invoke("frames=$frameCount no-barcode pending=$pendingBarcode/$confirmCount")
             } finally {
                 reader.reset()
             }
