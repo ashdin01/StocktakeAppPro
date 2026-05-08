@@ -10,10 +10,7 @@ import com.google.zxing.NotFoundException
 import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 
-class BarcodeAnalyzer(
-    private val onDetected: (String) -> Unit,
-    private val onDebug: ((String) -> Unit)? = null,
-) : ImageAnalysis.Analyzer {
+class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.Analyzer {
 
     private val reader = MultiFormatReader().apply {
         setHints(
@@ -27,17 +24,11 @@ class BarcodeAnalyzer(
     private var lastScanTime   = 0L
     private var pendingBarcode: String? = null
     private var confirmCount   = 0
-    private var frameCount     = 0
-    private var lastRaw        = "—"
 
     override fun analyze(image: ImageProxy) {
         try {
-            frameCount++
             val now = System.currentTimeMillis()
-            if (now - lastScanTime < COOLDOWN_MS) {
-                onDebug?.invoke("frames=$frameCount [cooldown] last=$lastRaw")
-                return
-            }
+            if (now - lastScanTime < COOLDOWN_MS) return
 
             val rotation = image.imageInfo.rotationDegrees
             val (data, w, h) = extractLuminance(image, rotation)
@@ -49,7 +40,6 @@ class BarcodeAnalyzer(
             try {
                 val result = reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
                 val barcode = result.text
-                lastRaw = barcode
 
                 if (barcode == pendingBarcode) {
                     confirmCount++
@@ -58,8 +48,6 @@ class BarcodeAnalyzer(
                     confirmCount   = 1
                 }
 
-                onDebug?.invoke("frames=$frameCount rot=$rotation found=$barcode confirm=$confirmCount/${CONFIRM_NEEDED}")
-
                 if (confirmCount >= CONFIRM_NEEDED) {
                     lastScanTime   = now
                     pendingBarcode = null
@@ -67,7 +55,7 @@ class BarcodeAnalyzer(
                     onDetected(barcode)
                 }
             } catch (_: NotFoundException) {
-                onDebug?.invoke("frames=$frameCount rot=$rotation no-barcode pending=$pendingBarcode/$confirmCount")
+                // missed frame — keep pendingBarcode to accumulate confirmations
             } finally {
                 reader.reset()
             }

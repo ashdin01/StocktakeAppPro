@@ -24,11 +24,6 @@ class ScanViewModel : ViewModel() {
     private val _state = MutableStateFlow<ScanState>(ScanState.Scanning)
     val state: StateFlow<ScanState> = _state
 
-    private val _debug = MutableStateFlow("camera starting...")
-    val debug: StateFlow<String> = _debug
-
-    fun updateDebug(info: String) { _debug.value = info }
-
     private var lastBarcode: String? = null
 
     fun onBarcodeDetected(barcode: String, serverUrl: String) {

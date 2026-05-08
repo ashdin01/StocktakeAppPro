@@ -43,7 +43,6 @@ fun ScanScreen(
 ) {
     val context = LocalContext.current
     val state by vm.state.collectAsState()
-    val debug by vm.debug.collectAsState()
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -93,21 +92,9 @@ fun ScanScreen(
                 CameraPreview(
                     isAnalyzing = state is ScanState.Scanning,
                     onBarcodeDetected = { barcode -> vm.onBarcodeDetected(barcode, serverUrl) },
-                    onDebug = { info -> vm.updateDebug(info) },
                 )
 
                 ScanOverlay(Modifier.fillMaxSize())
-
-                Text(
-                    text = debug,
-                    color = Color.Yellow,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 72.dp, start = 8.dp, end = 8.dp)
-                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                )
 
                 when (val s = state) {
                     is ScanState.Scanning -> Text(
@@ -153,11 +140,7 @@ fun ScanScreen(
 }
 
 @Composable
-private fun CameraPreview(
-    isAnalyzing: Boolean,
-    onBarcodeDetected: (String) -> Unit,
-    onDebug: ((String) -> Unit)? = null,
-) {
+private fun CameraPreview(isAnalyzing: Boolean, onBarcodeDetected: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
@@ -183,10 +166,9 @@ private fun CameraPreview(
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                     .also {
-                        it.setAnalyzer(executor, BarcodeAnalyzer(
-                            onDetected = { barcode -> callbackRef.value(barcode) },
-                            onDebug    = onDebug,
-                        ))
+                        it.setAnalyzer(executor, BarcodeAnalyzer { barcode ->
+                            callbackRef.value(barcode)
+                        })
                     }
                 try {
                     cameraProvider.unbindAll()
