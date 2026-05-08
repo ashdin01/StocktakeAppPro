@@ -18,8 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -147,10 +145,10 @@ private fun CameraPreview(isAnalyzing: Boolean, onBarcodeDetected: (String) -> U
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
 
-    // Use rememberUpdatedState so the callback and flag are always current
-    // without restarting the camera pipeline on every state change.
-    val currentIsAnalyzing by rememberUpdatedState(isAnalyzing)
-    val currentOnDetected by rememberUpdatedState(onBarcodeDetected)
+    // Keep the latest callback in a ref so the camera never needs to restart.
+    // The ViewModel already ignores calls when not in Scanning state.
+    val callbackRef = remember { mutableStateOf(onBarcodeDetected) }
+    callbackRef.value = onBarcodeDetected
 
     AndroidView(
         factory = { ctx ->
@@ -164,11 +162,12 @@ private fun CameraPreview(isAnalyzing: Boolean, onBarcodeDetected: (String) -> U
                     it.surfaceProvider = previewView.surfaceProvider
                 }
                 val analyzer = ImageAnalysis.Builder()
+                    .setTargetResolution(android.util.Size(1280, 720))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                     .also {
                         it.setAnalyzer(executor, BarcodeAnalyzer { barcode ->
-                            if (currentIsAnalyzing) currentOnDetected(barcode)
+                            callbackRef.value(barcode)
                         })
                     }
                 try {
