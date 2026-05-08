@@ -21,7 +21,9 @@ class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.
         )
     }
 
-    private var lastScanTime = 0L
+    private var lastScanTime  = 0L
+    private var pendingBarcode: String? = null
+    private var confirmCount  = 0
 
     override fun analyze(image: ImageProxy) {
         val now = System.currentTimeMillis()
@@ -44,10 +46,24 @@ class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.
 
         try {
             val result = reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
-            lastScanTime = now
-            onDetected(result.text)
+            val barcode = result.text
+
+            if (barcode == pendingBarcode) {
+                confirmCount++
+            } else {
+                pendingBarcode = barcode
+                confirmCount  = 1
+            }
+
+            if (confirmCount >= CONFIRM_NEEDED) {
+                lastScanTime   = now
+                pendingBarcode = null
+                confirmCount   = 0
+                onDetected(barcode)
+            }
         } catch (_: NotFoundException) {
-            // no barcode in this frame
+            // Don't reset pendingBarcode — missed frames happen between good reads.
+            // Only a different barcode should reset the confirmation count.
         } finally {
             reader.reset()
             image.close()
@@ -55,6 +71,7 @@ class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.
     }
 
     companion object {
-        private const val COOLDOWN_MS = 1500L
+        private const val COOLDOWN_MS    = 1500L
+        private const val CONFIRM_NEEDED = 2
     }
 }
