@@ -39,10 +39,11 @@ class BarcodeAnalyzer(
                 return
             }
 
-            val data = extractLuminance(image)
+            val rotation = image.imageInfo.rotationDegrees
+            val (data, w, h) = extractLuminance(image, rotation)
+
             val source = PlanarYUVLuminanceSource(
-                data, image.width, image.height,
-                0, 0, image.width, image.height, false
+                data, w, h, 0, 0, w, h, false
             )
 
             try {
@@ -57,7 +58,7 @@ class BarcodeAnalyzer(
                     confirmCount   = 1
                 }
 
-                onDebug?.invoke("frames=$frameCount found=$barcode confirm=$confirmCount/${CONFIRM_NEEDED}")
+                onDebug?.invoke("frames=$frameCount rot=$rotation found=$barcode confirm=$confirmCount/${CONFIRM_NEEDED}")
 
                 if (confirmCount >= CONFIRM_NEEDED) {
                     lastScanTime   = now
@@ -66,7 +67,7 @@ class BarcodeAnalyzer(
                     onDetected(barcode)
                 }
             } catch (_: NotFoundException) {
-                onDebug?.invoke("frames=$frameCount no-barcode pending=$pendingBarcode/$confirmCount")
+                onDebug?.invoke("frames=$frameCount rot=$rotation no-barcode pending=$pendingBarcode/$confirmCount")
             } finally {
                 reader.reset()
             }
@@ -75,28 +76,64 @@ class BarcodeAnalyzer(
         }
     }
 
-    private fun extractLuminance(image: ImageProxy): ByteArray {
+    private data class LumaImage(val data: ByteArray, val width: Int, val height: Int)
+
+    private fun extractLuminance(image: ImageProxy, rotationDegrees: Int): LumaImage {
         val yPlane    = image.planes[0]
         val rowStride = yPlane.rowStride
         val width     = image.width
         val height    = image.height
         val buffer    = yPlane.buffer
 
-        // If there's no row padding, copy the buffer directly.
+        // Strip row padding to produce a clean packed Y array.
+        val luma = ByteArray(width * height)
         if (rowStride == width) {
-            return ByteArray(buffer.remaining()).also { buffer.get(it) }
+            val avail = minOf(buffer.remaining(), luma.size)
+            buffer.get(luma, 0, avail)
+        } else {
+            val row = ByteArray(rowStride)
+            for (y in 0 until height) {
+                val toCopy = minOf(rowStride, buffer.remaining())
+                if (toCopy <= 0) break
+                buffer.get(row, 0, toCopy)
+                row.copyInto(luma, y * width, 0, minOf(width, toCopy))
+            }
         }
 
-        // Otherwise strip the padding from each row to give ZXing a clean packed array.
-        val data = ByteArray(width * height)
-        val row  = ByteArray(rowStride)
-        for (y in 0 until height) {
-            val toCopy = minOf(rowStride, buffer.remaining())
-            if (toCopy <= 0) break
-            buffer.get(row, 0, toCopy)
-            row.copyInto(data, y * width, 0, minOf(width, toCopy))
+        return when (rotationDegrees) {
+            90  -> LumaImage(rotate90cw(luma, width, height),  height, width)
+            180 -> LumaImage(rotate180(luma, width, height),   width,  height)
+            270 -> LumaImage(rotate90ccw(luma, width, height), height, width)
+            else -> LumaImage(luma, width, height)
         }
-        return data
+    }
+
+    // 90° clockwise: (r, c) → (c, H-1-r), new dims H×W
+    private fun rotate90cw(src: ByteArray, srcW: Int, srcH: Int): ByteArray {
+        val dst = ByteArray(srcW * srcH)
+        for (r in 0 until srcH) {
+            for (c in 0 until srcW) {
+                dst[c * srcH + (srcH - 1 - r)] = src[r * srcW + c]
+            }
+        }
+        return dst
+    }
+
+    // 90° counter-clockwise: (r, c) → (W-1-c, r), new dims H×W
+    private fun rotate90ccw(src: ByteArray, srcW: Int, srcH: Int): ByteArray {
+        val dst = ByteArray(srcW * srcH)
+        for (r in 0 until srcH) {
+            for (c in 0 until srcW) {
+                dst[(srcW - 1 - c) * srcH + r] = src[r * srcW + c]
+            }
+        }
+        return dst
+    }
+
+    private fun rotate180(src: ByteArray, srcW: Int, srcH: Int): ByteArray {
+        val dst = ByteArray(srcW * srcH)
+        for (i in src.indices) dst[src.size - 1 - i] = src[i]
+        return dst
     }
 
     companion object {
