@@ -30,12 +30,15 @@ class BarcodeAnalyzer(private val onDetected: (String) -> Unit) : ImageAnalysis.
             return
         }
 
-        // Use the Y (luminance) plane — works for all YUV formats CameraX delivers
-        val buffer = image.planes[0].buffer
+        // Use the Y (luminance) plane. Pass rowStride as dataWidth so ZXing
+        // correctly handles row padding (rowStride is often > image.width).
+        val yPlane = image.planes[0]
+        val buffer = yPlane.buffer
         val data = ByteArray(buffer.remaining()).also { buffer.get(it) }
+        val rowStride = yPlane.rowStride
 
         val source = PlanarYUVLuminanceSource(
-            data, image.width, image.height,
+            data, rowStride, image.height,
             0, 0, image.width, image.height, false
         )
 
