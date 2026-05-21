@@ -11,9 +11,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import au.com.harcourtapples.stocktake.StocktakeApplication
 import au.com.harcourtapples.stocktake.api.models.Count
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -21,13 +23,15 @@ import au.com.harcourtapples.stocktake.api.models.Count
 fun SessionDetailScreen(
     sessionId: Int,
     serverUrl: String,
+    offline: Boolean,
     onScan: () -> Unit,
-    onBack: () -> Unit,
-    vm: SessionDetailViewModel = viewModel()
+    onBack: () -> Unit
 ) {
+    val app = LocalContext.current.applicationContext as StocktakeApplication
+    val vm: SessionDetailViewModel = viewModel(factory = SessionDetailViewModel.factory(app.repository))
     val state by vm.state.collectAsState()
 
-    LaunchedEffect(sessionId, serverUrl) { vm.load(serverUrl, sessionId) }
+    LaunchedEffect(sessionId, serverUrl, offline) { vm.load(serverUrl, offline, sessionId) }
 
     Scaffold(
         topBar = {
@@ -41,7 +45,7 @@ fun SessionDetailScreen(
             )
         },
         floatingActionButton = {
-            if (state.session?.status == "OPEN") {
+            if (state.session?.status == "OPEN" || offline) {
                 ExtendedFloatingActionButton(
                     onClick = onScan,
                     icon = { Icon(Icons.Default.CameraAlt, "Scan") },
@@ -81,7 +85,7 @@ fun SessionDetailScreen(
                 ) {
                     Text(state.error!!, color = MaterialTheme.colorScheme.error)
                     Spacer(Modifier.height(8.dp))
-                    Button(onClick = { vm.load(serverUrl, sessionId) }) { Text("Retry") }
+                    Button(onClick = { vm.load(serverUrl, offline, sessionId) }) { Text("Retry") }
                 }
                 state.counts.isEmpty() -> Box(Modifier.fillMaxSize()) {
                     Text(
@@ -95,7 +99,7 @@ fun SessionDetailScreen(
                     items(state.counts, key = { it.id }) { count ->
                         CountRow(
                             count = count,
-                            onDelete = { vm.deleteCount(serverUrl, sessionId, count.id) }
+                            onDelete = { vm.deleteCount(serverUrl, offline, sessionId, count.id) }
                         )
                         HorizontalDivider()
                     }
@@ -121,7 +125,7 @@ private fun CountRow(count: Count, onDelete: () -> Unit) {
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "${count.countedQty.toInt()} ${if (count.countedQty % 1 != 0.0) String.format("%.2f", count.countedQty) else ""}",
+                    count.countedQty.let { if (it % 1 == 0.0) it.toInt().toString() else String.format("%.2f", it) },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )

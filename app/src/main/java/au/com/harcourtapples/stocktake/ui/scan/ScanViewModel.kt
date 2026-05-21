@@ -1,10 +1,12 @@
 package au.com.harcourtapples.stocktake.ui.scan
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import au.com.harcourtapples.stocktake.api.ApiClient
-import au.com.harcourtapples.stocktake.api.models.AddCountRequest
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import au.com.harcourtapples.stocktake.api.models.Product
+import au.com.harcourtapples.stocktake.repository.StocktakeRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,27 +17,33 @@ sealed class ScanState {
     object LookingUp : ScanState()
     data class ProductFound(val product: Product, val barcode: String) : ScanState()
     data class NotFound(val barcode: String) : ScanState()
+    data class OfflineReady(val barcode: String) : ScanState()
     object Saving : ScanState()
     data class Error(val message: String) : ScanState()
 }
 
-class ScanViewModel : ViewModel() {
+class ScanViewModel(private val repo: StocktakeRepository) : ViewModel() {
 
     private val _state = MutableStateFlow<ScanState>(ScanState.Scanning)
     val state: StateFlow<ScanState> = _state
 
     private var lastBarcode: String? = null
 
-    fun onBarcodeDetected(barcode: String, serverUrl: String) {
+    fun onBarcodeDetected(barcode: String, serverUrl: String, offline: Boolean) {
         val current = _state.value
         if (current !is ScanState.Scanning) return
         if (barcode == lastBarcode) return
         lastBarcode = barcode
-        _state.value = ScanState.LookingUp
 
+        if (offline) {
+            _state.value = ScanState.OfflineReady(barcode)
+            return
+        }
+
+        _state.value = ScanState.LookingUp
         viewModelScope.launch {
             try {
-                val resp = ApiClient.service(serverUrl).getProduct(barcode)
+                val resp = au.com.harcourtapples.stocktake.api.ApiClient.service(serverUrl).getProduct(barcode)
                 _state.value = when {
                     resp.isSuccessful -> ScanState.ProductFound(resp.body()!!, barcode)
                     resp.code() == 404 -> ScanState.NotFound(barcode)
@@ -47,20 +55,15 @@ class ScanViewModel : ViewModel() {
         }
     }
 
-    fun submitCount(sessionId: Int, barcode: String, qty: Double, serverUrl: String) {
+    fun submitCount(sessionId: Int, barcode: String, qty: Double, serverUrl: String, offline: Boolean, description: String = "") {
         _state.value = ScanState.Saving
         viewModelScope.launch {
             try {
-                val resp = ApiClient.service(serverUrl)
-                    .addCount(sessionId, AddCountRequest(barcode, qty))
-                if (resp.isSuccessful) {
-                    delay(400)
-                    reset()
-                } else {
-                    _state.value = ScanState.Error("Failed to save: ${resp.code()}")
-                }
+                repo.addCount(offline, serverUrl, sessionId, barcode, qty, description)
+                delay(400)
+                reset()
             } catch (e: Exception) {
-                _state.value = ScanState.Error(e.message ?: "Network error")
+                _state.value = ScanState.Error(e.message ?: "Failed to save")
             }
         }
     }
@@ -68,5 +71,11 @@ class ScanViewModel : ViewModel() {
     fun reset() {
         lastBarcode = null
         _state.value = ScanState.Scanning
+    }
+
+    companion object {
+        fun factory(repo: StocktakeRepository): ViewModelProvider.Factory = viewModelFactory {
+            initializer { ScanViewModel(repo) }
+        }
     }
 }

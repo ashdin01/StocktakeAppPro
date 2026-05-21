@@ -30,6 +30,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import au.com.harcourtapples.stocktake.StocktakeApplication
 import au.com.harcourtapples.stocktake.scanner.BarcodeAnalyzer
 import java.util.concurrent.Executors
 
@@ -38,10 +39,12 @@ import java.util.concurrent.Executors
 fun ScanScreen(
     sessionId: Int,
     serverUrl: String,
-    onBack: () -> Unit,
-    vm: ScanViewModel = viewModel()
+    offline: Boolean,
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val app = context.applicationContext as StocktakeApplication
+    val vm: ScanViewModel = viewModel(factory = ScanViewModel.factory(app.repository))
     val state by vm.state.collectAsState()
 
     var hasCameraPermission by remember {
@@ -91,7 +94,7 @@ fun ScanScreen(
             } else {
                 CameraPreview(
                     isAnalyzing = state is ScanState.Scanning,
-                    onBarcodeDetected = { barcode -> vm.onBarcodeDetected(barcode, serverUrl) },
+                    onBarcodeDetected = { barcode -> vm.onBarcodeDetected(barcode, serverUrl, offline) },
                 )
 
                 ScanOverlay(Modifier.fillMaxSize())
@@ -115,13 +118,19 @@ fun ScanScreen(
                     is ScanState.ProductFound -> ProductBottomSheet(
                         product = s.product,
                         barcode = s.barcode,
-                        onConfirm = { qty -> vm.submitCount(sessionId, s.barcode, qty, serverUrl) },
+                        onConfirm = { qty -> vm.submitCount(sessionId, s.barcode, qty, serverUrl, offline) },
                         onCancel = { vm.reset() }
                     )
 
                     is ScanState.NotFound -> NotFoundSheet(
                         barcode = s.barcode,
                         onDismiss = { vm.reset() }
+                    )
+
+                    is ScanState.OfflineReady -> OfflineCountSheet(
+                        barcode = s.barcode,
+                        onConfirm = { desc, qty -> vm.submitCount(sessionId, s.barcode, qty, serverUrl, offline, desc) },
+                        onCancel = { vm.reset() }
                     )
 
                     is ScanState.Saving -> CircularProgressIndicator(
@@ -145,8 +154,6 @@ private fun CameraPreview(isAnalyzing: Boolean, onBarcodeDetected: (String) -> U
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
 
-    // Keep the latest callback in a ref so the camera never needs to restart.
-    // The ViewModel already ignores calls when not in Scanning state.
     val callbackRef = remember { mutableStateOf(onBarcodeDetected) }
     callbackRef.value = onBarcodeDetected
 
@@ -221,29 +228,7 @@ private fun ProductBottomSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(barcode, style = MaterialTheme.typography.bodySmall)
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    IconButton(
-                        onClick = { qtyText = ((qtyText.toDoubleOrNull() ?: 1.0) - 1).coerceAtLeast(0.0).let { if (it % 1 == 0.0) it.toInt().toString() else it.toString() } }
-                    ) { Text("−", style = MaterialTheme.typography.headlineSmall) }
-
-                    OutlinedTextField(
-                        value = qtyText,
-                        onValueChange = { qtyText = it },
-                        label = { Text("Quantity") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    IconButton(
-                        onClick = { qtyText = ((qtyText.toDoubleOrNull() ?: 0.0) + 1).let { if (it % 1 == 0.0) it.toInt().toString() else it.toString() } }
-                    ) { Text("+", style = MaterialTheme.typography.headlineSmall) }
-                }
-
+                QtyRow(qtyText = qtyText, onQtyChange = { qtyText = it })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
                     Button(
@@ -253,6 +238,74 @@ private fun ProductBottomSheet(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun OfflineCountSheet(
+    barcode: String,
+    onConfirm: (String, Double) -> Unit,
+    onCancel: () -> Unit
+) {
+    var description by remember { mutableStateOf("") }
+    var qtyText by remember { mutableStateOf("1") }
+
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        Surface(
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Offline Count", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    barcode,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description (optional)") },
+                    placeholder = { Text("Leave blank to use barcode") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                QtyRow(qtyText = qtyText, onQtyChange = { qtyText = it })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    Button(
+                        onClick = { onConfirm(description, qtyText.toDoubleOrNull() ?: 1.0) },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Save Offline") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QtyRow(qtyText: String, onQtyChange: (String) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        IconButton(
+            onClick = { onQtyChange(((qtyText.toDoubleOrNull() ?: 1.0) - 1).coerceAtLeast(0.0).let { if (it % 1 == 0.0) it.toInt().toString() else it.toString() }) }
+        ) { Text("−", style = MaterialTheme.typography.headlineSmall) }
+
+        OutlinedTextField(
+            value = qtyText,
+            onValueChange = onQtyChange,
+            label = { Text("Quantity") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            singleLine = true,
+            modifier = Modifier.weight(1f)
+        )
+
+        IconButton(
+            onClick = { onQtyChange(((qtyText.toDoubleOrNull() ?: 0.0) + 1).let { if (it % 1 == 0.0) it.toInt().toString() else it.toString() }) }
+        ) { Text("+", style = MaterialTheme.typography.headlineSmall) }
     }
 }
 

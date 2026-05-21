@@ -1,10 +1,13 @@
 package au.com.harcourtapples.stocktake.ui.detail
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import au.com.harcourtapples.stocktake.api.ApiClient
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import au.com.harcourtapples.stocktake.api.models.Count
 import au.com.harcourtapples.stocktake.api.models.Session
+import au.com.harcourtapples.stocktake.repository.StocktakeRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -16,46 +19,44 @@ data class DetailUiState(
     val error: String? = null
 )
 
-class SessionDetailViewModel : ViewModel() {
+class SessionDetailViewModel(private val repo: StocktakeRepository) : ViewModel() {
 
     private val _state = MutableStateFlow(DetailUiState())
     val state: StateFlow<DetailUiState> = _state
 
-    fun load(serverUrl: String, sessionId: Int) {
+    fun load(serverUrl: String, offline: Boolean, sessionId: Int) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                val api = ApiClient.service(serverUrl)
-                val sessionResp = api.getSession(sessionId)
-                val countsResp  = api.getCounts(sessionId)
-                if (sessionResp.isSuccessful && countsResp.isSuccessful) {
-                    _state.value = _state.value.copy(
-                        session  = sessionResp.body(),
-                        counts   = countsResp.body() ?: emptyList(),
-                        isLoading = false
-                    )
-                } else {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = "Server error ${sessionResp.code()}"
-                    )
-                }
+                val session = repo.getSession(offline, serverUrl, sessionId)
+                val counts  = repo.getCounts(offline, serverUrl, sessionId)
+                _state.value = _state.value.copy(
+                    session   = session,
+                    counts    = counts,
+                    isLoading = false
+                )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = e.message)
             }
         }
     }
 
-    fun deleteCount(serverUrl: String, sessionId: Int, countId: Int) {
+    fun deleteCount(serverUrl: String, offline: Boolean, sessionId: Int, countId: Int) {
         viewModelScope.launch {
             try {
-                ApiClient.service(serverUrl).deleteCount(sessionId, countId)
+                repo.deleteCount(offline, serverUrl, sessionId, countId)
                 _state.value = _state.value.copy(
                     counts = _state.value.counts.filter { it.id != countId }
                 )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message)
             }
+        }
+    }
+
+    companion object {
+        fun factory(repo: StocktakeRepository): ViewModelProvider.Factory = viewModelFactory {
+            initializer { SessionDetailViewModel(repo) }
         }
     }
 }

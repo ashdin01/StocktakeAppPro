@@ -1,8 +1,12 @@
 package au.com.harcourtapples.stocktake.ui.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,10 +20,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(
     store: SettingsStore,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onSync: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val savedUrl by store.serverUrl.collectAsState(initial = SettingsStore.DEFAULT_URL)
+    val offline by store.offlineMode.collectAsState(initial = false)
     var urlInput by remember(savedUrl) { mutableStateOf(savedUrl) }
     var testStatus by remember { mutableStateOf("") }
     var isTesting by remember { mutableStateOf(false) }
@@ -44,6 +50,47 @@ fun SettingsScreen(
                 .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // ── Mode toggle ────────────────────────────────────────────────
+
+            Text("Connection Mode", style = MaterialTheme.typography.titleMedium)
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ModeButton(
+                    label = "WiFi",
+                    description = "Live connection to BackOfficePro",
+                    icon = { Icon(Icons.Default.Wifi, null, modifier = Modifier.size(20.dp)) },
+                    selected = !offline,
+                    modifier = Modifier.weight(1f),
+                    onClick = { scope.launch { store.setOfflineMode(false) } }
+                )
+                ModeButton(
+                    label = "Offline",
+                    description = "Save locally, sync later",
+                    icon = { Icon(Icons.Default.WifiOff, null, modifier = Modifier.size(20.dp)) },
+                    selected = offline,
+                    modifier = Modifier.weight(1f),
+                    onClick = { scope.launch { store.setOfflineMode(true) } }
+                )
+            }
+
+            if (offline) {
+                OutlinedButton(
+                    onClick = onSync,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.CloudUpload, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Upload offline data to BackOfficePro")
+                }
+            }
+
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+
+            // ── Server connection ──────────────────────────────────────────
+
             Text("Server Connection", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Enter the IP address of the PC running BackOfficePro.\n" +
@@ -118,15 +165,59 @@ fun SettingsScreen(
                 )
             }
 
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
             Text("About", style = MaterialTheme.typography.titleMedium)
             Text(
-                "BackOfficePro Stocktake\nVersion 1.0.0\n\n" +
+                "BackOfficePro Stocktake\nVersion 1.1.0\n\n" +
                 "Scan EAN-13 and EAN-8 barcodes to record stock counts.\n" +
-                "Data syncs to BackOfficePro running on your local network.",
+                "WiFi mode syncs to BackOfficePro in real time.\n" +
+                "Offline mode saves locally — upload when back on WiFi.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModeButton(
+    label: String,
+    description: String,
+    icon: @Composable () -> Unit,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val containerColor = if (selected)
+        MaterialTheme.colorScheme.primaryContainer
+    else
+        MaterialTheme.colorScheme.surfaceVariant
+
+    val borderColor = if (selected)
+        MaterialTheme.colorScheme.primary
+    else
+        MaterialTheme.colorScheme.outline
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Column(
+            Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            icon()
+            Text(label, style = MaterialTheme.typography.labelLarge)
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
     }

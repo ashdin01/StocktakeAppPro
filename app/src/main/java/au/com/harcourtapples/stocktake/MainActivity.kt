@@ -13,6 +13,7 @@ import au.com.harcourtapples.stocktake.ui.detail.SessionDetailScreen
 import au.com.harcourtapples.stocktake.ui.scan.ScanScreen
 import au.com.harcourtapples.stocktake.ui.sessions.SessionsScreen
 import au.com.harcourtapples.stocktake.ui.settings.SettingsScreen
+import au.com.harcourtapples.stocktake.ui.sync.SyncScreen
 import au.com.harcourtapples.stocktake.ui.theme.StocktakeTheme
 
 class MainActivity : ComponentActivity() {
@@ -23,13 +24,16 @@ class MainActivity : ComponentActivity() {
         setContent {
             StocktakeTheme {
                 val serverUrl by store.serverUrl.collectAsState(initial = SettingsStore.DEFAULT_URL)
+                val offline by store.offlineMode.collectAsState(initial = false)
                 val navController = rememberNavController()
                 NavHost(navController = navController, startDestination = "sessions") {
                     composable("sessions") {
                         SessionsScreen(
                             serverUrl = serverUrl,
+                            offline = offline,
                             onOpenSession = { id -> navController.navigate("session/$id") },
-                            onSettings = { navController.navigate("settings") }
+                            onSettings = { navController.navigate("settings") },
+                            onSync = { navController.navigate("sync") }
                         )
                     }
                     composable("session/{sessionId}") { back ->
@@ -37,6 +41,7 @@ class MainActivity : ComponentActivity() {
                         SessionDetailScreen(
                             sessionId = sessionId,
                             serverUrl = serverUrl,
+                            offline = offline,
                             onScan = { navController.navigate("scan/$sessionId") },
                             onBack = { navController.popBackStack() }
                         )
@@ -46,12 +51,20 @@ class MainActivity : ComponentActivity() {
                         ScanScreen(
                             sessionId = sessionId,
                             serverUrl = serverUrl,
+                            offline = offline,
                             onBack = { navController.popBackStack() }
                         )
                     }
                     composable("settings") {
                         SettingsScreen(
                             store = store,
+                            onBack = { navController.popBackStack() },
+                            onSync = { navController.navigate("sync") }
+                        )
+                    }
+                    composable("sync") {
+                        SyncScreen(
+                            serverUrl = serverUrl,
                             onBack = { navController.popBackStack() }
                         )
                     }

@@ -1,0 +1,145 @@
+package au.com.harcourtapples.stocktake.repository
+
+import au.com.harcourtapples.stocktake.api.ApiClient
+import au.com.harcourtapples.stocktake.api.models.AddCountRequest
+import au.com.harcourtapples.stocktake.api.models.Count
+import au.com.harcourtapples.stocktake.api.models.CreateSessionRequest
+import au.com.harcourtapples.stocktake.api.models.Session
+import au.com.harcourtapples.stocktake.db.dao.LocalCountDao
+import au.com.harcourtapples.stocktake.db.dao.LocalSessionDao
+import au.com.harcourtapples.stocktake.db.entities.LocalCount
+import au.com.harcourtapples.stocktake.db.entities.LocalSession
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class StocktakeRepository(
+    private val sessionDao: LocalSessionDao,
+    private val countDao: LocalCountDao
+) {
+    private val timestampFmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+
+    private fun now() = timestampFmt.format(Date())
+
+    // ── Sessions ─────────────────────────────────────────────────────────────
+
+    suspend fun getSessions(offline: Boolean, serverUrl: String): List<Session> {
+        return if (offline) {
+            sessionDao.getAll().map { it.toSession(countDao.countForSession(it.id)) }
+        } else {
+            val resp = ApiClient.service(serverUrl).getSessions()
+            if (resp.isSuccessful) resp.body() ?: emptyList()
+            else throw Exception("Server error ${resp.code()}")
+        }
+    }
+
+    suspend fun createSession(offline: Boolean, serverUrl: String, label: String, deptId: Int?): Int {
+        return if (offline) {
+            val id = sessionDao.insert(LocalSession(label = label, startedAt = now()))
+            id.toInt()
+        } else {
+            val resp = ApiClient.service(serverUrl).createSession(CreateSessionRequest(label, deptId))
+            if (resp.isSuccessful) resp.body()?.get("id") ?: throw Exception("No ID in response")
+            else throw Exception("Failed to create session: ${resp.code()}")
+        }
+    }
+
+    suspend fun getSession(offline: Boolean, serverUrl: String, sessionId: Int): Session? {
+        return if (offline) {
+            sessionDao.getById(sessionId)?.toSession(countDao.countForSession(sessionId))
+        } else {
+            val resp = ApiClient.service(serverUrl).getSession(sessionId)
+            if (resp.isSuccessful) resp.body()
+            else throw Exception("Server error ${resp.code()}")
+        }
+    }
+
+    suspend fun getCounts(offline: Boolean, serverUrl: String, sessionId: Int): List<Count> {
+        return if (offline) {
+            countDao.getBySession(sessionId).map { it.toCount() }
+        } else {
+            val resp = ApiClient.service(serverUrl).getCounts(sessionId)
+            if (resp.isSuccessful) resp.body() ?: emptyList()
+            else throw Exception("Server error ${resp.code()}")
+        }
+    }
+
+    suspend fun addCount(
+        offline: Boolean,
+        serverUrl: String,
+        sessionId: Int,
+        barcode: String,
+        qty: Double,
+        description: String = ""
+    ) {
+        if (offline) {
+            countDao.insert(
+                LocalCount(
+                    sessionId = sessionId,
+                    barcode = barcode,
+                    description = description.ifBlank { barcode },
+                    qty = qty,
+                    scannedAt = now()
+                )
+            )
+        } else {
+            val resp = ApiClient.service(serverUrl).addCount(sessionId, AddCountRequest(barcode, qty))
+            if (!resp.isSuccessful) throw Exception("Failed to save count: ${resp.code()}")
+        }
+    }
+
+    suspend fun deleteCount(offline: Boolean, serverUrl: String, sessionId: Int, countId: Int) {
+        if (offline) {
+            countDao.deleteById(countId)
+        } else {
+            ApiClient.service(serverUrl).deleteCount(sessionId, countId)
+        }
+    }
+
+    // ── Sync ─────────────────────────────────────────────────────────────────
+
+    suspend fun getUnsyncedSessions(): List<LocalSession> = sessionDao.getUnsynced()
+
+    suspend fun getUnsyncedCountsForSession(sessionId: Int): List<LocalCount> =
+        countDao.getUnsyncedForSession(sessionId)
+
+    suspend fun syncSession(serverUrl: String, session: LocalSession): Int {
+        val api = ApiClient.service(serverUrl)
+        val resp = api.createSession(CreateSessionRequest(session.label, null, session.notes))
+        if (!resp.isSuccessful) throw Exception("Failed to create session on server: ${resp.code()}")
+        val serverId = resp.body()?.get("id") ?: throw Exception("No server ID returned")
+
+        val counts = countDao.getUnsyncedForSession(session.id)
+        for (count in counts) {
+            val cr = api.addCount(serverId, AddCountRequest(count.barcode, count.qty))
+            if (!cr.isSuccessful) throw Exception("Failed to sync count ${count.id}: ${cr.code()}")
+            countDao.update(count.copy(synced = true))
+        }
+        sessionDao.update(session.copy(synced = true, serverId = serverId))
+        return serverId
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private fun LocalSession.toSession(lineCount: Int) = Session(
+        id = id,
+        label = label,
+        deptName = null,
+        status = "OPEN",
+        startedAt = startedAt,
+        closedAt = null,
+        lineCount = lineCount,
+        notes = notes
+    )
+
+    private fun LocalCount.toCount() = Count(
+        id = id,
+        sessionId = sessionId,
+        barcode = barcode,
+        countedQty = qty,
+        description = description,
+        sellPrice = 0.0,
+        deptName = null,
+        scannedAt = scannedAt
+    )
+}

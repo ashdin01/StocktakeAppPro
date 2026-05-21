@@ -6,14 +6,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import au.com.harcourtapples.stocktake.StocktakeApplication
 import au.com.harcourtapples.stocktake.api.models.Department
 import au.com.harcourtapples.stocktake.api.models.Session
 
@@ -21,20 +25,40 @@ import au.com.harcourtapples.stocktake.api.models.Session
 @Composable
 fun SessionsScreen(
     serverUrl: String,
+    offline: Boolean,
     onOpenSession: (Int) -> Unit,
     onSettings: () -> Unit,
-    vm: SessionsViewModel = viewModel()
+    onSync: () -> Unit
 ) {
+    val app = LocalContext.current.applicationContext as StocktakeApplication
+    val vm: SessionsViewModel = viewModel(factory = SessionsViewModel.factory(app.repository))
     val state by vm.state.collectAsState()
     var showNewDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(serverUrl) { vm.load(serverUrl) }
+    LaunchedEffect(serverUrl, offline) { vm.load(serverUrl, offline) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Stocktake Sessions") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Stocktake Sessions")
+                        if (offline) {
+                            Icon(
+                                Icons.Default.WifiOff,
+                                contentDescription = "Offline mode",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                },
                 actions = {
+                    if (offline) {
+                        IconButton(onClick = onSync) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = "Sync")
+                        }
+                    }
                     IconButton(onClick = onSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
@@ -52,13 +76,15 @@ fun SessionsScreen(
                 state.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 state.error != null -> ErrorMessage(
                     message = state.error!!,
-                    onRetry = { vm.load(serverUrl) }
+                    onRetry = { vm.load(serverUrl, offline) }
                 )
                 state.sessions.isEmpty() -> Text(
-                    "No sessions yet. Tap + to create one.",
+                    if (offline) "No offline sessions yet.\nTap + to create one."
+                    else "No sessions yet. Tap + to create one.",
                     modifier = Modifier.align(Alignment.Center).padding(16.dp),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
                 else -> LazyColumn(Modifier.fillMaxSize()) {
                     items(state.sessions, key = { it.id }) { session ->
@@ -72,19 +98,14 @@ fun SessionsScreen(
 
     if (showNewDialog) {
         NewSessionDialog(
-            departments = state.departments,
+            departments = if (offline) emptyList() else state.departments,
+            offline = offline,
             onDismiss = { showNewDialog = false },
             onCreate = { label, deptId ->
                 showNewDialog = false
-                vm.createSession(serverUrl, label, deptId, onSuccess = onOpenSession)
+                vm.createSession(serverUrl, offline, label, deptId, onSuccess = onOpenSession)
             }
         )
-    }
-
-    state.error?.let { err ->
-        LaunchedEffect(err) {
-            // error shown inline; auto-dismiss after showing
-        }
     }
 }
 
@@ -120,6 +141,7 @@ private fun SessionCard(session: Session, onClick: () -> Unit) {
 @Composable
 private fun NewSessionDialog(
     departments: List<Department>,
+    offline: Boolean,
     onDismiss: () -> Unit,
     onCreate: (String, Int?) -> Unit
 ) {
@@ -139,25 +161,27 @@ private fun NewSessionDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-                    OutlinedTextField(
-                        value = selectedDept?.name ?: "All Departments",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Department (optional)") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        DropdownMenuItem(
-                            text = { Text("All Departments") },
-                            onClick = { selectedDept = null; expanded = false }
+                if (!offline && departments.isNotEmpty()) {
+                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                        OutlinedTextField(
+                            value = selectedDept?.name ?: "All Departments",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Department (optional)") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
                         )
-                        departments.forEach { dept ->
+                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                             DropdownMenuItem(
-                                text = { Text(dept.name) },
-                                onClick = { selectedDept = dept; expanded = false }
+                                text = { Text("All Departments") },
+                                onClick = { selectedDept = null; expanded = false }
                             )
+                            departments.forEach { dept ->
+                                DropdownMenuItem(
+                                    text = { Text(dept.name) },
+                                    onClick = { selectedDept = dept; expanded = false }
+                                )
+                            }
                         }
                     }
                 }
