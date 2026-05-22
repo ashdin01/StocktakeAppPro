@@ -25,13 +25,13 @@ class SessionsViewModel(private val repo: StocktakeRepository) : ViewModel() {
     private val _state = MutableStateFlow(SessionsUiState())
     val state: StateFlow<SessionsUiState> = _state
 
-    fun load(serverUrl: String, offline: Boolean) {
+    fun load(serverUrl: String, offline: Boolean, apiKey: String = "") {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                val sessions = repo.getSessions(offline, serverUrl)
+                val sessions = repo.getSessions(offline, serverUrl, apiKey)
                 val depts = if (offline) emptyList() else {
-                    val r = ApiClient.service(serverUrl).getDepartments()
+                    val r = ApiClient.service(serverUrl, apiKey).getDepartments()
                     if (r.isSuccessful) r.body() ?: emptyList() else emptyList()
                 }
                 _state.value = _state.value.copy(
@@ -53,13 +53,14 @@ class SessionsViewModel(private val repo: StocktakeRepository) : ViewModel() {
         offline: Boolean,
         label: String,
         deptId: Int?,
+        apiKey: String = "",
         onSuccess: (Int) -> Unit
     ) {
         viewModelScope.launch {
             try {
-                val id = repo.createSession(offline, serverUrl, label, deptId)
+                val id = repo.createSession(offline, serverUrl, label, deptId, apiKey)
                 onSuccess(id)
-                load(serverUrl, offline)
+                load(serverUrl, offline, apiKey)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message)
             }

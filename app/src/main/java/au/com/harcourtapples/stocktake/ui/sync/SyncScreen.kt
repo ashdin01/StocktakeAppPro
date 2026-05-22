@@ -19,6 +19,7 @@ import au.com.harcourtapples.stocktake.StocktakeApplication
 @Composable
 fun SyncScreen(
     serverUrl: String,
+    apiKey: String = "",
     onBack: () -> Unit
 ) {
     val app = LocalContext.current.applicationContext as StocktakeApplication
@@ -112,7 +113,7 @@ fun SyncScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Button(
-                            onClick = { vm.sync(serverUrl) },
+                            onClick = { vm.sync(serverUrl, apiKey) },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Sync ${state.pendingSessions} session(s) now")

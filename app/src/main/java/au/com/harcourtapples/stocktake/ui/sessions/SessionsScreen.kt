@@ -25,6 +25,7 @@ import au.com.harcourtapples.stocktake.api.models.Session
 @Composable
 fun SessionsScreen(
     serverUrl: String,
+    apiKey: String = "",
     offline: Boolean,
     onOpenSession: (Int) -> Unit,
     onSettings: () -> Unit,
@@ -35,7 +36,7 @@ fun SessionsScreen(
     val state by vm.state.collectAsState()
     var showNewDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(serverUrl, offline) { vm.load(serverUrl, offline) }
+    LaunchedEffect(serverUrl, apiKey, offline) { vm.load(serverUrl, offline, apiKey) }
 
     Scaffold(
         topBar = {
@@ -76,7 +77,7 @@ fun SessionsScreen(
                 state.isLoading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                 state.error != null -> ErrorMessage(
                     message = state.error!!,
-                    onRetry = { vm.load(serverUrl, offline) }
+                    onRetry = { vm.load(serverUrl, offline, apiKey) }
                 )
                 state.sessions.isEmpty() -> Text(
                     if (offline) "No offline sessions yet.\nTap + to create one."
@@ -103,7 +104,7 @@ fun SessionsScreen(
             onDismiss = { showNewDialog = false },
             onCreate = { label, deptId ->
                 showNewDialog = false
-                vm.createSession(serverUrl, offline, label, deptId, onSuccess = onOpenSession)
+                vm.createSession(serverUrl, offline, label, deptId, apiKey = apiKey, onSuccess = onOpenSession)
             }
         )
     }

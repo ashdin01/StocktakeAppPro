@@ -23,42 +23,42 @@ class StocktakeRepository(
 
     // ── Sessions ─────────────────────────────────────────────────────────────
 
-    suspend fun getSessions(offline: Boolean, serverUrl: String): List<Session> {
+    suspend fun getSessions(offline: Boolean, serverUrl: String, apiKey: String = ""): List<Session> {
         return if (offline) {
             sessionDao.getAll().map { it.toSession(countDao.countForSession(it.id)) }
         } else {
-            val resp = ApiClient.service(serverUrl).getSessions()
+            val resp = ApiClient.service(serverUrl, apiKey).getSessions()
             if (resp.isSuccessful) resp.body() ?: emptyList()
             else throw Exception("Server error ${resp.code()}")
         }
     }
 
-    suspend fun createSession(offline: Boolean, serverUrl: String, label: String, deptId: Int?): Int {
+    suspend fun createSession(offline: Boolean, serverUrl: String, apiKey: String = "", label: String, deptId: Int?): Int {
         return if (offline) {
             val id = sessionDao.insert(LocalSession(label = label, startedAt = now()))
             id.toInt()
         } else {
-            val resp = ApiClient.service(serverUrl).createSession(CreateSessionRequest(label, deptId))
+            val resp = ApiClient.service(serverUrl, apiKey).createSession(CreateSessionRequest(label, deptId))
             if (resp.isSuccessful) resp.body()?.get("id") ?: throw Exception("No ID in response")
             else throw Exception("Failed to create session: ${resp.code()}")
         }
     }
 
-    suspend fun getSession(offline: Boolean, serverUrl: String, sessionId: Int): Session? {
+    suspend fun getSession(offline: Boolean, serverUrl: String, apiKey: String = "", sessionId: Int): Session? {
         return if (offline) {
             sessionDao.getById(sessionId)?.toSession(countDao.countForSession(sessionId))
         } else {
-            val resp = ApiClient.service(serverUrl).getSession(sessionId)
+            val resp = ApiClient.service(serverUrl, apiKey).getSession(sessionId)
             if (resp.isSuccessful) resp.body()
             else throw Exception("Server error ${resp.code()}")
         }
     }
 
-    suspend fun getCounts(offline: Boolean, serverUrl: String, sessionId: Int): List<Count> {
+    suspend fun getCounts(offline: Boolean, serverUrl: String, apiKey: String = "", sessionId: Int): List<Count> {
         return if (offline) {
             countDao.getBySession(sessionId).map { it.toCount() }
         } else {
-            val resp = ApiClient.service(serverUrl).getCounts(sessionId)
+            val resp = ApiClient.service(serverUrl, apiKey).getCounts(sessionId)
             if (resp.isSuccessful) resp.body() ?: emptyList()
             else throw Exception("Server error ${resp.code()}")
         }
@@ -70,6 +70,7 @@ class StocktakeRepository(
         sessionId: Int,
         barcode: String,
         qty: Double,
+        apiKey: String = "",
         description: String = ""
     ) {
         if (offline) {
@@ -83,16 +84,16 @@ class StocktakeRepository(
                 )
             )
         } else {
-            val resp = ApiClient.service(serverUrl).addCount(sessionId, AddCountRequest(barcode, qty))
+            val resp = ApiClient.service(serverUrl, apiKey).addCount(sessionId, AddCountRequest(barcode, qty))
             if (!resp.isSuccessful) throw Exception("Failed to save count: ${resp.code()}")
         }
     }
 
-    suspend fun deleteCount(offline: Boolean, serverUrl: String, sessionId: Int, countId: Int) {
+    suspend fun deleteCount(offline: Boolean, serverUrl: String, apiKey: String = "", sessionId: Int, countId: Int) {
         if (offline) {
             countDao.deleteById(countId)
         } else {
-            ApiClient.service(serverUrl).deleteCount(sessionId, countId)
+            ApiClient.service(serverUrl, apiKey).deleteCount(sessionId, countId)
         }
     }
 
@@ -103,8 +104,8 @@ class StocktakeRepository(
     suspend fun getUnsyncedCountsForSession(sessionId: Int): List<LocalCount> =
         countDao.getUnsyncedForSession(sessionId)
 
-    suspend fun syncSession(serverUrl: String, session: LocalSession): Int {
-        val api = ApiClient.service(serverUrl)
+    suspend fun syncSession(serverUrl: String, apiKey: String = "", session: LocalSession): Int {
+        val api = ApiClient.service(serverUrl, apiKey)
         val resp = api.createSession(CreateSessionRequest(session.label, null, session.notes))
         if (!resp.isSuccessful) throw Exception("Failed to create session on server: ${resp.code()}")
         val serverId = resp.body()?.get("id") ?: throw Exception("No server ID returned")

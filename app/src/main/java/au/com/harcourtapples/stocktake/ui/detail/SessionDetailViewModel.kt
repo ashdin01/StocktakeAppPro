@@ -24,12 +24,12 @@ class SessionDetailViewModel(private val repo: StocktakeRepository) : ViewModel(
     private val _state = MutableStateFlow(DetailUiState())
     val state: StateFlow<DetailUiState> = _state
 
-    fun load(serverUrl: String, offline: Boolean, sessionId: Int) {
+    fun load(serverUrl: String, offline: Boolean, apiKey: String = "", sessionId: Int) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                val session = repo.getSession(offline, serverUrl, sessionId)
-                val counts  = repo.getCounts(offline, serverUrl, sessionId)
+                val session = repo.getSession(offline, serverUrl, sessionId, apiKey)
+                val counts  = repo.getCounts(offline, serverUrl, sessionId, apiKey)
                 _state.value = _state.value.copy(
                     session   = session,
                     counts    = counts,
@@ -41,10 +41,10 @@ class SessionDetailViewModel(private val repo: StocktakeRepository) : ViewModel(
         }
     }
 
-    fun deleteCount(serverUrl: String, offline: Boolean, sessionId: Int, countId: Int) {
+    fun deleteCount(serverUrl: String, offline: Boolean, apiKey: String = "", sessionId: Int, countId: Int) {
         viewModelScope.launch {
             try {
-                repo.deleteCount(offline, serverUrl, sessionId, countId)
+                repo.deleteCount(offline, serverUrl, sessionId, countId, apiKey)
                 _state.value = _state.value.copy(
                     counts = _state.value.counts.filter { it.id != countId }
                 )

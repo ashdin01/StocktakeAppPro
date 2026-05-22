@@ -24,12 +24,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             StocktakeTheme {
                 val serverUrl by store.serverUrl.collectAsState(initial = SettingsStore.DEFAULT_URL)
+                val apiKey by store.apiKey.collectAsState(initial = "")
                 val offline by store.offlineMode.collectAsState(initial = false)
                 val navController = rememberNavController()
                 NavHost(navController = navController, startDestination = "sessions") {
                     composable("sessions") {
                         SessionsScreen(
                             serverUrl = serverUrl,
+                            apiKey = apiKey,
                             offline = offline,
                             onOpenSession = { id -> navController.navigate("session/$id") },
                             onSettings = { navController.navigate("settings") },
@@ -41,6 +43,7 @@ class MainActivity : ComponentActivity() {
                         SessionDetailScreen(
                             sessionId = sessionId,
                             serverUrl = serverUrl,
+                            apiKey = apiKey,
                             offline = offline,
                             onScan = { navController.navigate("scan/$sessionId") },
                             onBack = { navController.popBackStack() }
@@ -51,6 +54,7 @@ class MainActivity : ComponentActivity() {
                         ScanScreen(
                             sessionId = sessionId,
                             serverUrl = serverUrl,
+                            apiKey = apiKey,
                             offline = offline,
                             onBack = { navController.popBackStack() }
                         )
@@ -65,6 +69,7 @@ class MainActivity : ComponentActivity() {
                     composable("sync") {
                         SyncScreen(
                             serverUrl = serverUrl,
+                            apiKey = apiKey,
                             onBack = { navController.popBackStack() }
                         )
                     }

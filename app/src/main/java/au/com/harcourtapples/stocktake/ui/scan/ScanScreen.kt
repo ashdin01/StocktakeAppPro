@@ -39,6 +39,7 @@ import java.util.concurrent.Executors
 fun ScanScreen(
     sessionId: Int,
     serverUrl: String,
+    apiKey: String = "",
     offline: Boolean,
     onBack: () -> Unit
 ) {
@@ -94,7 +95,7 @@ fun ScanScreen(
             } else {
                 CameraPreview(
                     isAnalyzing = state is ScanState.Scanning,
-                    onBarcodeDetected = { barcode -> vm.onBarcodeDetected(barcode, serverUrl, offline) },
+                    onBarcodeDetected = { barcode -> vm.onBarcodeDetected(barcode, serverUrl, offline, apiKey) },
                 )
 
                 ScanOverlay(Modifier.fillMaxSize())
@@ -118,7 +119,7 @@ fun ScanScreen(
                     is ScanState.ProductFound -> ProductBottomSheet(
                         product = s.product,
                         barcode = s.barcode,
-                        onConfirm = { qty -> vm.submitCount(sessionId, s.barcode, qty, serverUrl, offline) },
+                        onConfirm = { qty -> vm.submitCount(sessionId, s.barcode, qty, serverUrl, offline, apiKey = apiKey) },
                         onCancel = { vm.reset() }
                     )
 
@@ -129,7 +130,7 @@ fun ScanScreen(
 
                     is ScanState.OfflineReady -> OfflineCountSheet(
                         barcode = s.barcode,
-                        onConfirm = { desc, qty -> vm.submitCount(sessionId, s.barcode, qty, serverUrl, offline, desc) },
+                        onConfirm = { desc, qty -> vm.submitCount(sessionId, s.barcode, qty, serverUrl, offline, desc, apiKey) },
                         onCancel = { vm.reset() }
                     )
 

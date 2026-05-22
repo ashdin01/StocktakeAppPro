@@ -23,6 +23,7 @@ import au.com.harcourtapples.stocktake.api.models.Count
 fun SessionDetailScreen(
     sessionId: Int,
     serverUrl: String,
+    apiKey: String = "",
     offline: Boolean,
     onScan: () -> Unit,
     onBack: () -> Unit
@@ -31,7 +32,7 @@ fun SessionDetailScreen(
     val vm: SessionDetailViewModel = viewModel(factory = SessionDetailViewModel.factory(app.repository))
     val state by vm.state.collectAsState()
 
-    LaunchedEffect(sessionId, serverUrl, offline) { vm.load(serverUrl, offline, sessionId) }
+    LaunchedEffect(sessionId, serverUrl, apiKey, offline) { vm.load(serverUrl, offline, apiKey, sessionId) }
 
     Scaffold(
         topBar = {
@@ -85,7 +86,7 @@ fun SessionDetailScreen(
                 ) {
                     Text(state.error!!, color = MaterialTheme.colorScheme.error)
                     Spacer(Modifier.height(8.dp))
-                    Button(onClick = { vm.load(serverUrl, offline, sessionId) }) { Text("Retry") }
+                    Button(onClick = { vm.load(serverUrl, offline, apiKey, sessionId) }) { Text("Retry") }
                 }
                 state.counts.isEmpty() -> Box(Modifier.fillMaxSize()) {
                     Text(
@@ -99,7 +100,7 @@ fun SessionDetailScreen(
                     items(state.counts, key = { it.id }) { count ->
                         CountRow(
                             count = count,
-                            onDelete = { vm.deleteCount(serverUrl, offline, sessionId, count.id) }
+                            onDelete = { vm.deleteCount(serverUrl, offline, apiKey, sessionId, count.id) }
                         )
                         HorizontalDivider()
                     }

@@ -29,7 +29,7 @@ class ScanViewModel(private val repo: StocktakeRepository) : ViewModel() {
 
     private var lastBarcode: String? = null
 
-    fun onBarcodeDetected(barcode: String, serverUrl: String, offline: Boolean) {
+    fun onBarcodeDetected(barcode: String, serverUrl: String, offline: Boolean, apiKey: String = "") {
         val current = _state.value
         if (current !is ScanState.Scanning) return
         if (barcode == lastBarcode) return
@@ -43,7 +43,7 @@ class ScanViewModel(private val repo: StocktakeRepository) : ViewModel() {
         _state.value = ScanState.LookingUp
         viewModelScope.launch {
             try {
-                val resp = au.com.harcourtapples.stocktake.api.ApiClient.service(serverUrl).getProduct(barcode)
+                val resp = au.com.harcourtapples.stocktake.api.ApiClient.service(serverUrl, apiKey).getProduct(barcode)
                 _state.value = when {
                     resp.isSuccessful -> ScanState.ProductFound(resp.body()!!, barcode)
                     resp.code() == 404 -> ScanState.NotFound(barcode)
@@ -55,11 +55,11 @@ class ScanViewModel(private val repo: StocktakeRepository) : ViewModel() {
         }
     }
 
-    fun submitCount(sessionId: Int, barcode: String, qty: Double, serverUrl: String, offline: Boolean, description: String = "") {
+    fun submitCount(sessionId: Int, barcode: String, qty: Double, serverUrl: String, offline: Boolean, apiKey: String = "", description: String = "") {
         _state.value = ScanState.Saving
         viewModelScope.launch {
             try {
-                repo.addCount(offline, serverUrl, sessionId, barcode, qty, description)
+                repo.addCount(offline, serverUrl, sessionId, barcode, qty, description, apiKey)
                 delay(400)
                 reset()
             } catch (e: Exception) {

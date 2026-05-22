@@ -25,8 +25,10 @@ fun SettingsScreen(
 ) {
     val scope = rememberCoroutineScope()
     val savedUrl by store.serverUrl.collectAsState(initial = SettingsStore.DEFAULT_URL)
+    val savedKey by store.apiKey.collectAsState(initial = "")
     val offline by store.offlineMode.collectAsState(initial = false)
     var urlInput by remember(savedUrl) { mutableStateOf(savedUrl) }
+    var keyInput by remember(savedKey) { mutableStateOf(savedKey) }
     var testStatus by remember { mutableStateOf("") }
     var isTesting by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
@@ -108,6 +110,15 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            OutlinedTextField(
+                value = keyInput,
+                onValueChange = { keyInput = it; saved = false },
+                label = { Text("API Key") },
+                placeholder = { Text("Paste from BackOfficePro Settings → API Access") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = {
@@ -137,6 +148,7 @@ fun SettingsScreen(
                     onClick = {
                         scope.launch {
                             store.setServerUrl(urlInput)
+                            store.setApiKey(keyInput)
                             saved = true
                         }
                     },
