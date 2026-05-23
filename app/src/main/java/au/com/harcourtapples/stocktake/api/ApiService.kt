@@ -29,6 +29,9 @@ interface ApiService {
     @POST("api/v1/sessions/{id}/counts")
     suspend fun addCount(@Path("id") id: Int, @Body request: AddCountRequest): Response<Map<String, Any>>
 
+    @GET("api/v1/sessions/{id}/counts/barcode/{barcode}")
+    suspend fun getCountForBarcode(@Path("id") id: Int, @Path("barcode") barcode: String): Response<Map<String, Double>>
+
     @DELETE("api/v1/sessions/{id}/counts/{countId}")
     suspend fun deleteCount(@Path("id") id: Int, @Path("countId") countId: Int): Response<Map<String, Any>>
 }

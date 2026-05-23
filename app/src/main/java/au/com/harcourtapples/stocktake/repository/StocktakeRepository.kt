@@ -64,6 +64,25 @@ class StocktakeRepository(
         }
     }
 
+    suspend fun getExistingQty(
+        offline: Boolean,
+        serverUrl: String,
+        sessionId: Int,
+        barcode: String,
+        apiKey: String = ""
+    ): Double {
+        return if (offline) {
+            countDao.getBySessionAndBarcode(sessionId, barcode)?.qty ?: 0.0
+        } else {
+            try {
+                val resp = ApiClient.service(serverUrl, apiKey).getCountForBarcode(sessionId, barcode)
+                if (resp.isSuccessful) resp.body()?.get("counted_qty") ?: 0.0 else 0.0
+            } catch (_: Exception) {
+                0.0
+            }
+        }
+    }
+
     suspend fun addCount(
         offline: Boolean,
         serverUrl: String,
@@ -74,15 +93,20 @@ class StocktakeRepository(
         description: String = ""
     ) {
         if (offline) {
-            countDao.insert(
-                LocalCount(
-                    sessionId = sessionId,
-                    barcode = barcode,
-                    description = description.ifBlank { barcode },
-                    qty = qty,
-                    scannedAt = now()
+            val existing = countDao.getBySessionAndBarcode(sessionId, barcode)
+            if (existing != null) {
+                countDao.update(existing.copy(qty = existing.qty + qty))
+            } else {
+                countDao.insert(
+                    LocalCount(
+                        sessionId = sessionId,
+                        barcode = barcode,
+                        description = description.ifBlank { barcode },
+                        qty = qty,
+                        scannedAt = now()
+                    )
                 )
-            )
+            }
         } else {
             val resp = ApiClient.service(serverUrl, apiKey).addCount(sessionId, AddCountRequest(barcode, qty))
             if (!resp.isSuccessful) throw Exception("Failed to save count: ${resp.code()}")

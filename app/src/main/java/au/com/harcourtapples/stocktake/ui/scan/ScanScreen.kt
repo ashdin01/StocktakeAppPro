@@ -95,7 +95,7 @@ fun ScanScreen(
             } else {
                 CameraPreview(
                     isAnalyzing = state is ScanState.Scanning,
-                    onBarcodeDetected = { barcode -> vm.onBarcodeDetected(barcode, serverUrl, offline, apiKey) },
+                    onBarcodeDetected = { barcode -> vm.onBarcodeDetected(barcode, sessionId, serverUrl, offline, apiKey) },
                 )
 
                 ScanOverlay(Modifier.fillMaxSize())
@@ -119,6 +119,7 @@ fun ScanScreen(
                     is ScanState.ProductFound -> ProductBottomSheet(
                         product = s.product,
                         barcode = s.barcode,
+                        existingQty = s.existingQty,
                         onConfirm = { qty -> vm.submitCount(sessionId, s.barcode, qty, serverUrl, offline, apiKey = apiKey) },
                         onCancel = { vm.reset() }
                     )
@@ -130,6 +131,7 @@ fun ScanScreen(
 
                     is ScanState.OfflineReady -> OfflineCountSheet(
                         barcode = s.barcode,
+                        existingQty = s.existingQty,
                         onConfirm = { desc, qty -> vm.submitCount(sessionId, s.barcode, qty, serverUrl, offline, desc, apiKey) },
                         onCancel = { vm.reset() }
                     )
@@ -210,6 +212,7 @@ private fun ScanOverlay(modifier: Modifier) {
 private fun ProductBottomSheet(
     product: au.com.harcourtapples.stocktake.api.models.Product,
     barcode: String,
+    existingQty: Double = 0.0,
     onConfirm: (Double) -> Unit,
     onCancel: () -> Unit
 ) {
@@ -229,6 +232,15 @@ private fun ProductBottomSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(barcode, style = MaterialTheme.typography.bodySmall)
+                if (existingQty != 0.0) {
+                    val display = if (existingQty % 1 == 0.0) existingQty.toInt().toString() else String.format("%.2f", existingQty)
+                    Text(
+                        "Already counted: $display  —  enter amount to add (use negative to correct)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
                 QtyRow(qtyText = qtyText, onQtyChange = { qtyText = it })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
@@ -245,6 +257,7 @@ private fun ProductBottomSheet(
 @Composable
 private fun OfflineCountSheet(
     barcode: String,
+    existingQty: Double = 0.0,
     onConfirm: (String, Double) -> Unit,
     onCancel: () -> Unit
 ) {
@@ -264,6 +277,15 @@ private fun OfflineCountSheet(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (existingQty != 0.0) {
+                    val display = if (existingQty % 1 == 0.0) existingQty.toInt().toString() else String.format("%.2f", existingQty)
+                    Text(
+                        "Already counted: $display  —  enter amount to add (use negative to correct)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
@@ -292,7 +314,7 @@ private fun QtyRow(qtyText: String, onQtyChange: (String) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         IconButton(
-            onClick = { onQtyChange(((qtyText.toDoubleOrNull() ?: 1.0) - 1).coerceAtLeast(0.0).let { if (it % 1 == 0.0) it.toInt().toString() else it.toString() }) }
+            onClick = { onQtyChange(((qtyText.toDoubleOrNull() ?: 1.0) - 1).let { if (it % 1 == 0.0) it.toInt().toString() else it.toString() }) }
         ) { Text("−", style = MaterialTheme.typography.headlineSmall) }
 
         OutlinedTextField(

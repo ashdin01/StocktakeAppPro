@@ -14,6 +14,9 @@ interface LocalCountDao {
     @Query("SELECT COUNT(*) FROM local_counts WHERE sessionId = :sessionId")
     suspend fun countForSession(sessionId: Int): Int
 
+    @Query("SELECT * FROM local_counts WHERE sessionId = :sessionId AND barcode = :barcode LIMIT 1")
+    suspend fun getBySessionAndBarcode(sessionId: Int, barcode: String): LocalCount?
+
     @Insert
     suspend fun insert(count: LocalCount): Long
 

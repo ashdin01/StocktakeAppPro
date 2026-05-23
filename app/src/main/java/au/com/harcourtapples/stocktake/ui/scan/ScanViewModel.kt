@@ -15,9 +15,9 @@ import kotlinx.coroutines.launch
 sealed class ScanState {
     object Scanning : ScanState()
     object LookingUp : ScanState()
-    data class ProductFound(val product: Product, val barcode: String) : ScanState()
+    data class ProductFound(val product: Product, val barcode: String, val existingQty: Double = 0.0) : ScanState()
     data class NotFound(val barcode: String) : ScanState()
-    data class OfflineReady(val barcode: String) : ScanState()
+    data class OfflineReady(val barcode: String, val existingQty: Double = 0.0) : ScanState()
     object Saving : ScanState()
     data class Error(val message: String) : ScanState()
 }
@@ -29,23 +29,25 @@ class ScanViewModel(private val repo: StocktakeRepository) : ViewModel() {
 
     private var lastBarcode: String? = null
 
-    fun onBarcodeDetected(barcode: String, serverUrl: String, offline: Boolean, apiKey: String = "") {
+    fun onBarcodeDetected(barcode: String, sessionId: Int, serverUrl: String, offline: Boolean, apiKey: String = "") {
         val current = _state.value
         if (current !is ScanState.Scanning) return
         if (barcode == lastBarcode) return
         lastBarcode = barcode
 
-        if (offline) {
-            _state.value = ScanState.OfflineReady(barcode)
-            return
-        }
-
         _state.value = ScanState.LookingUp
         viewModelScope.launch {
             try {
+                val existingQty = repo.getExistingQty(offline, serverUrl, sessionId, barcode, apiKey)
+
+                if (offline) {
+                    _state.value = ScanState.OfflineReady(barcode, existingQty)
+                    return@launch
+                }
+
                 val resp = au.com.harcourtapples.stocktake.api.ApiClient.service(serverUrl, apiKey).getProduct(barcode)
                 _state.value = when {
-                    resp.isSuccessful -> ScanState.ProductFound(resp.body()!!, barcode)
+                    resp.isSuccessful -> ScanState.ProductFound(resp.body()!!, barcode, existingQty)
                     resp.code() == 404 -> ScanState.NotFound(barcode)
                     else -> ScanState.Error("Server error ${resp.code()}")
                 }
