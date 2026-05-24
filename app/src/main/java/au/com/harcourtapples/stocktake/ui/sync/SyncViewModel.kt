@@ -45,7 +45,7 @@ class SyncViewModel(private val repo: StocktakeRepository) : ViewModel() {
                 val sessions = repo.getUnsyncedSessions()
                 var synced = 0
                 for (session in sessions) {
-                    repo.syncSession(serverUrl, session, apiKey)
+                    repo.syncSession(serverUrl, apiKey, session)
                     synced++
                     _state.value = _state.value.copy(syncedSessions = synced)
                 }

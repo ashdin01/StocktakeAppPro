@@ -28,8 +28,8 @@ class SessionDetailViewModel(private val repo: StocktakeRepository) : ViewModel(
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                val session = repo.getSession(offline, serverUrl, sessionId, apiKey)
-                val counts  = repo.getCounts(offline, serverUrl, sessionId, apiKey)
+                val session = repo.getSession(offline, serverUrl, apiKey, sessionId)
+                val counts  = repo.getCounts(offline, serverUrl, apiKey, sessionId)
                 _state.value = _state.value.copy(
                     session   = session,
                     counts    = counts,
@@ -44,7 +44,7 @@ class SessionDetailViewModel(private val repo: StocktakeRepository) : ViewModel(
     fun deleteCount(serverUrl: String, offline: Boolean, apiKey: String = "", sessionId: Int, countId: Int) {
         viewModelScope.launch {
             try {
-                repo.deleteCount(offline, serverUrl, sessionId, countId, apiKey)
+                repo.deleteCount(offline, serverUrl, apiKey, sessionId, countId)
                 _state.value = _state.value.copy(
                     counts = _state.value.counts.filter { it.id != countId }
                 )

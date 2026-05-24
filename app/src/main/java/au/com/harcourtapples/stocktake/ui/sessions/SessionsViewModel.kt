@@ -58,7 +58,7 @@ class SessionsViewModel(private val repo: StocktakeRepository) : ViewModel() {
     ) {
         viewModelScope.launch {
             try {
-                val id = repo.createSession(offline, serverUrl, label, deptId, apiKey)
+                val id = repo.createSession(offline, serverUrl, apiKey, label, deptId)
                 onSuccess(id)
                 load(serverUrl, offline, apiKey)
             } catch (e: Exception) {
