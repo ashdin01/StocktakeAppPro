@@ -120,7 +120,7 @@ fun ScanScreen(
                         product = s.product,
                         barcode = s.barcode,
                         existingQty = s.existingQty,
-                        onConfirm = { qty -> vm.submitCount(sessionId, s.barcode, qty, serverUrl, offline, apiKey = apiKey) },
+                        onConfirm = { newTotal -> vm.submitCount(sessionId, s.barcode, newTotal - s.existingQty, serverUrl, offline, apiKey = apiKey) },
                         onCancel = { vm.reset() }
                     )
 
@@ -132,7 +132,7 @@ fun ScanScreen(
                     is ScanState.OfflineReady -> OfflineCountSheet(
                         barcode = s.barcode,
                         existingQty = s.existingQty,
-                        onConfirm = { desc, qty -> vm.submitCount(sessionId, s.barcode, qty, serverUrl, offline, desc, apiKey) },
+                        onConfirm = { desc, newTotal -> vm.submitCount(sessionId, s.barcode, newTotal - s.existingQty, serverUrl, offline, desc, apiKey) },
                         onCancel = { vm.reset() }
                     )
 
@@ -216,7 +216,11 @@ private fun ProductBottomSheet(
     onConfirm: (Double) -> Unit,
     onCancel: () -> Unit
 ) {
-    var qtyText by remember { mutableStateOf("1") }
+    val initialQty = if (existingQty > 0)
+        existingQty.let { if (it % 1 == 0.0) it.toInt().toString() else String.format("%.2f", it) }
+    else "1"
+    var qtyText by remember { mutableStateOf(initialQty) }
+    val isUpdate = existingQty > 0
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Surface(
@@ -232,22 +236,17 @@ private fun ProductBottomSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(barcode, style = MaterialTheme.typography.bodySmall)
-                if (existingQty != 0.0) {
-                    val display = if (existingQty % 1 == 0.0) existingQty.toInt().toString() else String.format("%.2f", existingQty)
-                    Text(
-                        "Already counted: $display  —  enter amount to add (use negative to correct)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                QtyRow(qtyText = qtyText, onQtyChange = { qtyText = it })
+                QtyRow(
+                    qtyText = qtyText,
+                    onQtyChange = { qtyText = it },
+                    label = if (isUpdate) "Counted quantity (adjust up or down)" else "Quantity"
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
                     Button(
-                        onClick = { onConfirm(qtyText.toDoubleOrNull() ?: 1.0) },
+                        onClick = { onConfirm(qtyText.toDoubleOrNull() ?: existingQty) },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Add to Session") }
+                    ) { Text(if (isUpdate) "Update Count" else "Add to Session") }
                 }
             }
         }
@@ -261,8 +260,12 @@ private fun OfflineCountSheet(
     onConfirm: (String, Double) -> Unit,
     onCancel: () -> Unit
 ) {
+    val initialQty = if (existingQty > 0)
+        existingQty.let { if (it % 1 == 0.0) it.toInt().toString() else String.format("%.2f", it) }
+    else "1"
     var description by remember { mutableStateOf("") }
-    var qtyText by remember { mutableStateOf("1") }
+    var qtyText by remember { mutableStateOf(initialQty) }
+    val isUpdate = existingQty > 0
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Surface(
@@ -277,15 +280,6 @@ private fun OfflineCountSheet(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (existingQty != 0.0) {
-                    val display = if (existingQty % 1 == 0.0) existingQty.toInt().toString() else String.format("%.2f", existingQty)
-                    Text(
-                        "Already counted: $display  —  enter amount to add (use negative to correct)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
@@ -294,13 +288,17 @@ private fun OfflineCountSheet(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                QtyRow(qtyText = qtyText, onQtyChange = { qtyText = it })
+                QtyRow(
+                    qtyText = qtyText,
+                    onQtyChange = { qtyText = it },
+                    label = if (isUpdate) "Counted quantity (adjust up or down)" else "Quantity"
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
                     Button(
-                        onClick = { onConfirm(description, qtyText.toDoubleOrNull() ?: 1.0) },
+                        onClick = { onConfirm(description, qtyText.toDoubleOrNull() ?: existingQty) },
                         modifier = Modifier.weight(1f)
-                    ) { Text("Save Offline") }
+                    ) { Text(if (isUpdate) "Update Count" else "Save Offline") }
                 }
             }
         }
@@ -308,7 +306,7 @@ private fun OfflineCountSheet(
 }
 
 @Composable
-private fun QtyRow(qtyText: String, onQtyChange: (String) -> Unit) {
+private fun QtyRow(qtyText: String, onQtyChange: (String) -> Unit, label: String = "Quantity") {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -320,7 +318,7 @@ private fun QtyRow(qtyText: String, onQtyChange: (String) -> Unit) {
         OutlinedTextField(
             value = qtyText,
             onValueChange = onQtyChange,
-            label = { Text("Quantity") },
+            label = { Text(label) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
             modifier = Modifier.weight(1f)
