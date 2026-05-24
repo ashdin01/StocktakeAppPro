@@ -181,7 +181,7 @@ fun SettingsScreen(
 
             Text("About", style = MaterialTheme.typography.titleMedium)
             Text(
-                "BackOfficePro Stocktake Pro\nVersion 1.2.0\n\n" +
+                "BackOfficePro Stocktake Pro\nVersion 1.2.1\n\n" +
                 "Scan EAN-13 and EAN-8 barcodes to record stock counts.\n" +
                 "WiFi mode syncs to BackOfficePro in real time.\n" +
                 "Offline mode saves locally — upload when back on WiFi.",
