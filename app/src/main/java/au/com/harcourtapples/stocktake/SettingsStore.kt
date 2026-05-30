@@ -13,10 +13,11 @@ private val Context.dataStore by preferencesDataStore(name = "prefs")
 class SettingsStore(private val context: Context) {
 
     companion object {
-        private val KEY_SERVER_URL  = stringPreferencesKey("server_url")
-        private val KEY_API_KEY     = stringPreferencesKey("api_key")
-        private val KEY_OFFLINE     = booleanPreferencesKey("offline_mode")
-        const val DEFAULT_URL = "http://192.168.1.100:5050"
+        private val KEY_SERVER_URL        = stringPreferencesKey("server_url")
+        private val KEY_API_KEY           = stringPreferencesKey("api_key")
+        private val KEY_OFFLINE           = booleanPreferencesKey("offline_mode")
+        private val KEY_CERT_FINGERPRINT  = stringPreferencesKey("cert_fingerprint")
+        const val DEFAULT_URL = "https://192.168.1.100:5050"
     }
 
     val serverUrl: Flow<String> = context.dataStore.data.map { prefs ->
@@ -31,6 +32,11 @@ class SettingsStore(private val context: Context) {
         prefs[KEY_OFFLINE] ?: false
     }
 
+    /** SHA-256 fingerprint of the trusted BackOfficePro TLS certificate, or "" if not yet trusted. */
+    val trustedCertFingerprint: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_CERT_FINGERPRINT] ?: ""
+    }
+
     suspend fun setServerUrl(url: String) {
         context.dataStore.edit { it[KEY_SERVER_URL] = url.trimEnd('/') }
     }
@@ -41,5 +47,13 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setOfflineMode(offline: Boolean) {
         context.dataStore.edit { it[KEY_OFFLINE] = offline }
+    }
+
+    suspend fun setTrustedCertFingerprint(fp: String) {
+        context.dataStore.edit { it[KEY_CERT_FINGERPRINT] = fp }
+    }
+
+    suspend fun clearTrustedCertFingerprint() {
+        context.dataStore.edit { it.remove(KEY_CERT_FINGERPRINT) }
     }
 }

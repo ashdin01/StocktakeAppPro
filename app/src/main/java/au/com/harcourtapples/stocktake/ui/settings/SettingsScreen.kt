@@ -5,15 +5,19 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import au.com.harcourtapples.stocktake.SettingsStore
 import au.com.harcourtapples.stocktake.api.ApiClient
+import au.com.harcourtapples.stocktake.api.TofuTrustManager
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -24,14 +28,16 @@ fun SettingsScreen(
     onSync: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    val savedUrl by store.serverUrl.collectAsState(initial = SettingsStore.DEFAULT_URL)
-    val savedKey by store.apiKey.collectAsState(initial = "")
-    val offline by store.offlineMode.collectAsState(initial = false)
-    var urlInput by remember(savedUrl) { mutableStateOf(savedUrl) }
-    var keyInput by remember(savedKey) { mutableStateOf(savedKey) }
-    var testStatus by remember { mutableStateOf("") }
-    var isTesting by remember { mutableStateOf(false) }
-    var saved by remember { mutableStateOf(false) }
+    val savedUrl         by store.serverUrl.collectAsState(initial = SettingsStore.DEFAULT_URL)
+    val savedKey         by store.apiKey.collectAsState(initial = "")
+    val offline          by store.offlineMode.collectAsState(initial = false)
+    val savedFingerprint by store.trustedCertFingerprint.collectAsState(initial = "")
+
+    var urlInput    by remember(savedUrl)  { mutableStateOf(savedUrl) }
+    var keyInput    by remember(savedKey)  { mutableStateOf(savedKey) }
+    var testStatus  by remember { mutableStateOf("") }
+    var isTesting   by remember { mutableStateOf(false) }
+    var saved       by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -96,6 +102,7 @@ fun SettingsScreen(
             Text("Server Connection", style = MaterialTheme.typography.titleMedium)
             Text(
                 "Enter the IP address of the PC running BackOfficePro.\n" +
+                "Use https:// (default) for a secure connection. " +
                 "Both devices must be on the same WiFi network.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -105,7 +112,7 @@ fun SettingsScreen(
                 value = urlInput,
                 onValueChange = { urlInput = it; saved = false },
                 label = { Text("Server URL") },
-                placeholder = { Text("http://192.168.1.100:5050") },
+                placeholder = { Text("https://192.168.1.100:5050") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -126,8 +133,25 @@ fun SettingsScreen(
                         testStatus = ""
                         scope.launch {
                             try {
-                                val resp = ApiClient.service(urlInput).health()
-                                testStatus = if (resp.isSuccessful) "Connected!" else "Server error ${resp.code()}"
+                                // Configure trust manager for this test URL
+                                val fpForTest = if (urlInput.trimEnd('/') == savedUrl.trimEnd('/'))
+                                    savedFingerprint.ifBlank { null }
+                                else
+                                    null  // different URL — first-use mode
+                                ApiClient.setTrustedFingerprint(fpForTest)
+
+                                val resp = ApiClient.service(urlInput, keyInput).health()
+                                if (resp.isSuccessful) {
+                                    val seen = ApiClient.lastSeenFingerprint
+                                    if (seen != null && seen != savedFingerprint) {
+                                        store.setTrustedCertFingerprint(seen)
+                                        testStatus = "Connected! Certificate trusted."
+                                    } else {
+                                        testStatus = "Connected!"
+                                    }
+                                } else {
+                                    testStatus = "Server error ${resp.code()}"
+                                }
                             } catch (e: Exception) {
                                 testStatus = "Cannot connect: ${e.message}"
                             } finally {
@@ -147,8 +171,11 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         scope.launch {
+                            val urlChanged = urlInput.trimEnd('/') != savedUrl.trimEnd('/')
                             store.setServerUrl(urlInput)
                             store.setApiKey(keyInput)
+                            if (urlChanged) store.clearTrustedCertFingerprint()
+                            ApiClient.invalidate()
                             saved = true
                         }
                     },
@@ -177,11 +204,80 @@ fun SettingsScreen(
                 )
             }
 
+            // ── Certificate trust ──────────────────────────────────────────
+
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+
+            Text("Certificate Trust", style = MaterialTheme.typography.titleMedium)
+
+            if (savedFingerprint.isBlank()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.LockOpen,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        "Not yet trusted — tap Test to connect and trust the server certificate.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp).padding(top = 2.dp)
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            "Trusted certificate",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            savedFingerprint,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = { scope.launch { store.clearTrustedCertFingerprint() } },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Forget Certificate")
+                }
+
+                Text(
+                    "Tap \"Forget Certificate\" if the BackOfficePro server certificate " +
+                    "was regenerated, then tap Test to re-trust it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
             Text("About", style = MaterialTheme.typography.titleMedium)
             Text(
-                "BackOfficePro Stocktake Pro\nVersion 1.2.1\n\n" +
+                "BackOfficePro Stocktake Pro\nVersion 1.3.0\n\n" +
                 "Scan EAN-13 and EAN-8 barcodes to record stock counts.\n" +
                 "WiFi mode syncs to BackOfficePro in real time.\n" +
                 "Offline mode saves locally — upload when back on WiFi.",
