@@ -140,17 +140,24 @@ fun SettingsScreen(
                                     null  // different URL — first-use mode
                                 ApiClient.setTrustedFingerprint(fpForTest)
 
-                                val resp = ApiClient.service(urlInput, keyInput).health()
-                                if (resp.isSuccessful) {
-                                    val seen = ApiClient.lastSeenFingerprint
-                                    if (seen != null && seen != savedFingerprint) {
-                                        store.setTrustedCertFingerprint(seen)
-                                        testStatus = "Connected! Certificate trusted."
-                                    } else {
-                                        testStatus = "Connected!"
-                                    }
+                                val health = ApiClient.service(urlInput, keyInput).health()
+                                if (!health.isSuccessful) {
+                                    testStatus = "Server error ${health.code()}"
                                 } else {
-                                    testStatus = "Server error ${resp.code()}"
+                                    val auth = ApiClient.service(urlInput, keyInput).getDepartments()
+                                    when {
+                                        auth.code() == 401 -> testStatus = "Reachable, but API key is invalid"
+                                        !auth.isSuccessful  -> testStatus = "Server error ${auth.code()}"
+                                        else -> {
+                                            val seen = ApiClient.lastSeenFingerprint
+                                            if (seen != null && seen != savedFingerprint) {
+                                                store.setTrustedCertFingerprint(seen)
+                                                testStatus = "Connected! Certificate trusted."
+                                            } else {
+                                                testStatus = "Connected!"
+                                            }
+                                        }
+                                    }
                                 }
                             } catch (e: Exception) {
                                 testStatus = "Cannot connect: ${e.message}"

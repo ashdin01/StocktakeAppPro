@@ -132,7 +132,7 @@ fun ScanScreen(
                     is ScanState.OfflineReady -> OfflineCountSheet(
                         barcode = s.barcode,
                         existingQty = s.existingQty,
-                        onConfirm = { desc, newTotal -> vm.submitCount(sessionId, s.barcode, newTotal - s.existingQty, serverUrl, offline, desc, apiKey) },
+                        onConfirm = { desc, newTotal -> vm.submitCount(sessionId, s.barcode, newTotal - s.existingQty, serverUrl, offline, apiKey, desc) },
                         onCancel = { vm.reset() }
                     )
 

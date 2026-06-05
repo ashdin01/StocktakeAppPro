@@ -61,7 +61,7 @@ class ScanViewModel(private val repo: StocktakeRepository) : ViewModel() {
         _state.value = ScanState.Saving
         viewModelScope.launch {
             try {
-                repo.addCount(offline, serverUrl, sessionId, barcode, qty, description, apiKey)
+                repo.addCount(offline, serverUrl, sessionId, barcode, qty, apiKey, description)
                 delay(400)
                 reset()
             } catch (e: Exception) {
