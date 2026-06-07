@@ -36,7 +36,8 @@ object ApiClient {
     }
 
     fun service(baseUrl: String, apiKey: String = ""): ApiService {
-        val url = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        val trimmedBaseUrl = baseUrl.trim()
+        val url = if (trimmedBaseUrl.endsWith("/")) trimmedBaseUrl else "$trimmedBaseUrl/"
         val isHttps = url.startsWith("https://", ignoreCase = true)
 
         if (retrofit == null || currentUrl != url || currentKey != apiKey) {

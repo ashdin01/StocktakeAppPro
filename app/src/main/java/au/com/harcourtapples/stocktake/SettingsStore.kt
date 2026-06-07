@@ -38,7 +38,7 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun setServerUrl(url: String) {
-        context.dataStore.edit { it[KEY_SERVER_URL] = url.trimEnd('/') }
+        context.dataStore.edit { it[KEY_SERVER_URL] = url.trim().trimEnd('/') }
     }
 
     suspend fun setApiKey(key: String) {
