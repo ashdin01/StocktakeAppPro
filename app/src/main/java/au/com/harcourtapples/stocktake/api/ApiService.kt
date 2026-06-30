@@ -1,6 +1,7 @@
 package au.com.harcourtapples.stocktake.api
 
 import au.com.harcourtapples.stocktake.api.models.*
+
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -10,6 +11,9 @@ interface ApiService {
 
     @GET("api/v1/departments")
     suspend fun getDepartments(): Response<List<Department>>
+
+    @GET("api/v1/departments/{deptId}/groups")
+    suspend fun getGroupsForDept(@Path("deptId") deptId: Int): Response<List<DeptGroup>>
 
     @GET("api/v1/products/{barcode}")
     suspend fun getProduct(@Path("barcode") barcode: String): Response<Product>

@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import au.com.harcourtapples.stocktake.StocktakeApplication
 import au.com.harcourtapples.stocktake.api.models.Department
+import au.com.harcourtapples.stocktake.api.models.DeptGroup
 import au.com.harcourtapples.stocktake.api.models.Session
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -100,11 +101,13 @@ fun SessionsScreen(
     if (showNewDialog) {
         NewSessionDialog(
             departments = if (offline) emptyList() else state.departments,
+            groups = state.groups,
             offline = offline,
             onDismiss = { showNewDialog = false },
-            onCreate = { label, deptId ->
+            onDeptSelected = { deptId -> vm.loadGroupsForDept(serverUrl, deptId, apiKey) },
+            onCreate = { label, deptId, groupId ->
                 showNewDialog = false
-                vm.createSession(serverUrl, offline, label, deptId, apiKey = apiKey, onSuccess = onOpenSession)
+                vm.createSession(serverUrl, offline, label, deptId, groupId, apiKey = apiKey, onSuccess = onOpenSession)
             }
         )
     }
@@ -117,7 +120,13 @@ private fun SessionCard(session: Session, onClick: () -> Unit) {
         headlineContent = { Text(session.label, fontWeight = FontWeight.SemiBold) },
         supportingContent = {
             Column {
-                session.deptName?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                val scope = when {
+                    session.deptName != null && session.groupName != null ->
+                        "${session.deptName} > ${session.groupName}"
+                    session.deptName != null -> session.deptName
+                    else -> null
+                }
+                scope?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 Text(
                     "${session.lineCount} items  •  ${session.startedAt.take(10)}",
                     style = MaterialTheme.typography.bodySmall,
@@ -142,13 +151,17 @@ private fun SessionCard(session: Session, onClick: () -> Unit) {
 @Composable
 private fun NewSessionDialog(
     departments: List<Department>,
+    groups: List<DeptGroup>,
     offline: Boolean,
     onDismiss: () -> Unit,
-    onCreate: (String, Int?) -> Unit
+    onDeptSelected: (Int?) -> Unit,
+    onCreate: (String, Int?, Int?) -> Unit
 ) {
     var label by remember { mutableStateOf("") }
     var selectedDept by remember { mutableStateOf<Department?>(null) }
-    var expanded by remember { mutableStateOf(false) }
+    var selectedGroup by remember { mutableStateOf<DeptGroup?>(null) }
+    var deptExpanded by remember { mutableStateOf(false) }
+    var groupExpanded by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -163,25 +176,60 @@ private fun NewSessionDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 if (!offline && departments.isNotEmpty()) {
-                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                    ExposedDropdownMenuBox(expanded = deptExpanded, onExpandedChange = { deptExpanded = it }) {
                         OutlinedTextField(
                             value = selectedDept?.name ?: "All Departments",
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Department (optional)") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(deptExpanded) },
                             modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
                         )
-                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        ExposedDropdownMenu(expanded = deptExpanded, onDismissRequest = { deptExpanded = false }) {
                             DropdownMenuItem(
                                 text = { Text("All Departments") },
-                                onClick = { selectedDept = null; expanded = false }
+                                onClick = {
+                                    selectedDept = null
+                                    selectedGroup = null
+                                    deptExpanded = false
+                                    onDeptSelected(null)
+                                }
                             )
                             departments.forEach { dept ->
                                 DropdownMenuItem(
                                     text = { Text(dept.name) },
-                                    onClick = { selectedDept = dept; expanded = false }
+                                    onClick = {
+                                        selectedDept = dept
+                                        selectedGroup = null
+                                        deptExpanded = false
+                                        onDeptSelected(dept.id)
+                                    }
                                 )
+                            }
+                        }
+                    }
+
+                    if (selectedDept != null && groups.isNotEmpty()) {
+                        ExposedDropdownMenuBox(expanded = groupExpanded, onExpandedChange = { groupExpanded = it }) {
+                            OutlinedTextField(
+                                value = selectedGroup?.name ?: "All Groups",
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Group (optional)") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(groupExpanded) },
+                                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(expanded = groupExpanded, onDismissRequest = { groupExpanded = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("All Groups") },
+                                    onClick = { selectedGroup = null; groupExpanded = false }
+                                )
+                                groups.forEach { group ->
+                                    DropdownMenuItem(
+                                        text = { Text(group.name) },
+                                        onClick = { selectedGroup = group; groupExpanded = false }
+                                    )
+                                }
                             }
                         }
                     }
@@ -190,7 +238,7 @@ private fun NewSessionDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { if (label.isNotBlank()) onCreate(label.trim(), selectedDept?.id) },
+                onClick = { if (label.isNotBlank()) onCreate(label.trim(), selectedDept?.id, selectedGroup?.id) },
                 enabled = label.isNotBlank()
             ) { Text("Create") }
         },
